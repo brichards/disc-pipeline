@@ -1,0 +1,195 @@
+#!/usr/bin/env python3
+"""Stage 05 -- copy the transcoded output to the NAS and prove it arrived.
+
+The shape was decided upstream: disc-transcode produced either a movie folder
+or a bare file, matching what Plex expects. So this is a plain copy with no
+path rewriting -- plus the two checks that make it safe to run unattended.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import config, locks, manifest, notify, plan as planlib, ship
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Ship a transcoded rip to the NAS.")
+    parser.add_argument("target", nargs="?", default=None,
+                        help="queue slug or directory; defaults to the current directory")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="show what would be copied, copy nothing")
+    parser.add_argument("--force", action="store_true",
+                        help="overwrite files that already exist at the destination")
+    parser.add_argument("--wait", action="store_true",
+                        help="block for the network lock instead of stepping aside")
+    parser.add_argument("--quiet", action="store_true", help="hide rsync progress")
+    args = parser.parse_args()
+
+    name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
+    plan = planlib.load(work_dir)
+
+    source = _source(work_dir)
+    if source is None:
+        notify.fail(f"nothing transcoded in {work_dir / 'transcoded'} -- "
+                    "run disc-transcode first")
+
+    library = _library(plan, slug)
+    destination = library / source.name
+    notify.say(f"\n{plan.get('title', name)}")
+    notify.say(f"  from  {source}")
+    notify.say(f"  to    {destination}")
+
+    try:
+        root = ship.ensure_mounted(destination)
+    except ship.NotMounted as exc:
+        _hold(slug, str(exc))
+        notify.alert("Ship blocked", f"{name}: {exc}")
+        notify.fail(str(exc))
+    notify.say(f"  vol   {root} (mounted)")
+
+    promotion = _promotion(source, destination)
+    if promotion:
+        # Promotion moves the old bare file into the folder we are about to
+        # write into, so it can create a collision the preflight below cannot
+        # see yet -- the destination does not exist at check time.
+        if (source / promotion.name).exists() and not args.force:
+            reason = (f"{promotion.name} is both on the NAS and in this "
+                      "shipment -- promoting would collide")
+            _hold(slug, reason)
+            notify.alert("Ship blocked", f"{name}: {reason}")
+            notify.fail(reason + " -- use --force to replace the copy on the NAS")
+        notify.say(f"  note  promoting existing {promotion.name} into a movie folder")
+
+    pairs = ship.plan_transfer(source, destination)
+    clashes = [d for _, d in pairs if d.exists()]
+    if clashes and not args.force:
+        reason = f"{len(clashes)} file(s) already at the destination"
+        for path in clashes[:5]:
+            notify.say(f"  !     exists: {path}")
+        _hold(slug, reason)
+        notify.alert("Ship blocked", f"{name}: {reason}")
+        notify.fail(reason + " -- use --force to overwrite")
+
+    notify.say(f"  files {len(pairs)}")
+    if args.dry_run:
+        for src, dst in pairs[:20]:
+            notify.say(f"        {src.name}  ->  {dst}")
+        notify.say("\nDry run -- nothing copied.")
+        return 0
+
+    try:
+        with locks.hold(locks.NET, blocking=args.wait):
+            return _ship(plan, work_dir, slug, name, source, destination,
+                         promotion, args)
+    except locks.Busy as exc:
+        notify.say(f"\n{exc} -- leaving this for the next pass.")
+        return 0
+
+
+def _ship(plan, work_dir, slug, name, source, destination, promotion, args):
+    if promotion:
+        try:
+            ship.promote(promotion, destination)
+        except (OSError, FileExistsError) as exc:
+            _hold(slug, f"could not promote {promotion.name}: {exc}")
+            notify.alert("Ship blocked", f"{name}: promotion failed")
+            notify.fail(str(exc))
+
+    notify.say("\nCopying...")
+    code = ship.transfer(source, destination,
+                         on_line=None if args.quiet else _progress)
+    if code != 0:
+        _hold(slug, f"rsync exited {code}")
+        notify.alert("Ship failed", f"{name}: rsync exited {code}")
+        return 1
+
+    notify.say("Verifying...")
+    ok, detail = ship.verify(source, destination)
+    if not ok:
+        _hold(slug, f"verify failed: {detail}")
+        notify.alert("Ship unverified", f"{name}: {detail}")
+        return 1
+
+    notify.say("  verified -- every file present with matching content")
+
+    plan["_shipped"] = {"destination": str(destination), "at": manifest.now()}
+    planlib.save(plan, work_dir)
+    if slug:
+        _record_shipped(slug, destination)
+    notify.say(f"\nShipped to {destination}")
+    notify.say("Retention decisions later, with: disc-cleanup")
+    return 0
+
+
+def _source(work_dir):
+    """What disc-transcode produced: a movie folder, or a bare feature file."""
+    root = work_dir / "transcoded"
+    if not root.is_dir():
+        return None
+    folders = [p for p in root.iterdir() if p.is_dir()]
+    if folders:
+        return folders[0]
+    files = sorted(p for p in root.glob("*.mkv") if p.is_file())
+    return files[0] if files else None
+
+
+def _library(plan, slug):
+    media_type = "movie"
+    if slug:
+        try:
+            media_type = manifest.load(slug).get("media_type", "movie")
+        except (OSError, ValueError):
+            pass
+    return config.NAS_TV if media_type == "tv" else config.NAS_MOVIES
+
+
+def _promotion(source, destination):
+    """A bare file occupying the folder name we are about to ship into.
+
+    Only happens when a title shipped feature-only and extras arrived later.
+    """
+    if not source.is_dir():
+        return None
+    bare = destination.with_suffix(".mkv")
+    return bare if bare.is_file() else None
+
+
+def _progress(line):
+    if line.strip():
+        notify.say(f"        {line}")
+
+
+def _hold(slug, reason):
+    if not slug:
+        return
+    try:
+        manifest.hold(manifest.load(slug), reason)
+    except (OSError, ValueError):
+        pass
+
+
+def _record_shipped(slug, destination):
+    try:
+        data = manifest.load(slug)
+    except (OSError, ValueError):
+        return
+    manifest.advance(data, manifest.SHIPPED)
+    # The ledger outlives the queue directory, so where a disc ended up has to
+    # be written there, not only into the manifest.
+    entry = manifest.ledger_find(data["fingerprint"]) or {}
+    entry.update({
+        "fingerprint": data["fingerprint"],
+        "label": data.get("label"),
+        "disc_type": data.get("disc_type"),
+        "slug": slug,
+        "shipped_as": str(destination),
+        "shipped_at": manifest.now(),
+    })
+    manifest.ledger_append(entry)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
