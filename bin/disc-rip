@@ -185,11 +185,19 @@ def main():
                    done, failed, len(have))
 
 
-# A ripped title is identified by its runtime, never by its size. Size was the
-# first thing tried here and it silently adopted files containing the wrong
-# title, because several extras on a disc are within a few percent of each
-# other. Runtime is unambiguous.
-DURATION_TOLERANCE = 5
+# A ripped title is checked by its runtime, never by its size. Size was tried
+# first and silently accepted files containing the wrong title, because extras
+# on one disc land within a few percent of each other.
+#
+# 1.5s: MakeMKV reports whole seconds, so a correct rip lands under a second
+# out (measured: 0.50s and 0.86s on known-good files). Anything beyond that is
+# a different title.
+#
+# This is a tripwire, not a proof. Warm Bodies has two extras 2 seconds apart,
+# which no tolerance can separate. The real guarantee is that the rip and the
+# scan now enumerate identically, so the indices cannot drift in the first
+# place.
+DURATION_TOLERANCE = 1.5
 
 
 def _duration_matches(path, expected_seconds):
