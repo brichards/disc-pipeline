@@ -25,6 +25,7 @@ subprocesses.
 | `hevc-transcode.rb` | `disc-transcode` | Above 1080p |
 | `rsync` | `disc-ship` | Ships to the NAS and verifies the copy |
 | Claude Code CLI | `disc-identify` | Runs headless to name the ripped titles |
+| HandBrakeCLI | `disc-transcode` | Called by the transcode scripts |
 
 ## Install
 
@@ -68,25 +69,80 @@ disc-cleanup                # retention prompts for shipped, verified discs
 disc-run --watch            # drain the queue until it's idle
 ```
 
+Each stage checks its own prerequisites and says which directory it looked in —
+`disc-identify` needs `.mkv` files, `disc-apply` needs a `plan.json`.
+
 ## Feeding discs unattended
 
-Install the watcher once. It is event-driven — launchd only wakes it when
-`/Volumes` changes — so it costs nothing on the days you are not ripping.
+`disc-watch` is a LaunchAgent that notices a disc and starts work on it. Install
+it once:
 
 ```sh
 disc-watch --install
 ```
 
-Insert a disc and it rips, identifies, and ejects, then you feed the next one.
-`disc-watch --status` reports whether it is loaded, `--uninstall` removes it,
-and `--once` runs the check in the foreground for testing.
+Then feed discs one at a time. Each rips, gets identified, and ejects on its
+own, so you can insert the next without watching a terminal. You end up with a
+queue of discs sitting at the review gate.
 
-A disc is **ejected only on a clean rip**. One with failed titles or
-worked-around read errors stays in the drive, because the next thing to try is
-cleaning it and re-ripping — which is easier with the disc where it is.
+### Flags
 
-Each stage checks its own prerequisites and says which directory it looked in —
-`disc-identify` needs `.mkv` files, `disc-apply` needs a `plan.json`.
+| Flag | What it does |
+| --- | --- |
+| `--install` | Write the plist to `~/Library/LaunchAgents` and load it |
+| `--uninstall` | Unload and delete the plist |
+| `--status` | Report whether the agent is loaded and the plist present |
+| `--once` | Run the check now, in the foreground, and wait for it to finish |
+| `--no-identify` | Rip only; skip the chained identification |
+
+### What it does when it fires
+
+1. Looks for `BDMV/index.bdmv` or `VIDEO_TS/VIDEO_TS.IFO` under `/Volumes`.
+2. Steps aside if a rip already holds the drive lock.
+3. Fingerprints the disc and checks the ledger. **A disc already ripped is
+   ejected, not re-ripped** — a duplicate in the stack costs seconds.
+4. Checks free space.
+5. Starts `disc-rip --wait` chained into `disc-identify`, detached, with output
+   to `<slug>/logs/watch.log`.
+
+### Behaviour worth knowing
+
+**It is event-driven, not a timer.** launchd only wakes it when `/Volumes`
+changes, so it costs nothing on the days you are not ripping. It also fires on
+every *eject*, which is why the drive-lock check comes early — that firing is a
+no-op.
+
+**Its failure mode is benign and self-announcing.** It is the first link in the
+chain, so if it stops working you insert a disc, nothing happens, and you notice
+immediately. Run `disc-rip` by hand and nothing is lost. Compare that to a
+watcher buried mid-pipeline, where a silent failure looks like the pipeline
+working.
+
+**A disc is ejected only on a clean rip.** One with failed titles or
+worked-around read errors stays in the drive and says so, because the next thing
+to try is cleaning it and re-ripping — easier with the disc where it is. Pass
+`--no-eject` to `disc-rip` to keep a disc regardless.
+
+**The plist carries an explicit `PATH`**, captured from your shell at install
+time. launchd does not inherit one, and every stage shells out to `ffmpeg`,
+`rsync`, or the `claude` CLI. **Re-run `disc-watch --install` if you move the
+project or change your `PATH`** — the plist holds absolute paths and a snapshot
+of the environment, neither of which updates itself.
+
+**Identification costs money and runs serially.** Roughly $1.44 and four
+minutes per disc. Use `--no-identify` if you would rather rip a stack first and
+identify later.
+
+### If nothing happens on insert
+
+```sh
+disc-watch --status          # is it loaded?
+disc-watch --once            # run the same check in the foreground
+tail -f ~/Movies/Rips/watch.log
+```
+
+The agent's own output goes to `watch.log` at the queue root; each disc's rip
+and identify output goes to `<slug>/logs/watch.log`.
 
 ## Layout
 
@@ -111,7 +167,14 @@ re-run.
 identity and disposition only, so it can outlive the queue directory after
 cleanup.
 
-Override the root with `DISC_PIPELINE_ROOT`.
+Run against a loose directory of `.mkv` files rather than a queue entry and the
+working files go into a `.disc-pipeline/` subdirectory instead, which keeps them
+out of Plex's way.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DISC_PIPELINE_ROOT` | `~/Movies/Rips` | Queue root |
+| `DISC_PIPELINE_NAS` | `/Volumes/Media` | Library root, holding `Movies/` and `TV Shows/` |
 
 ## Design notes
 
@@ -121,6 +184,11 @@ are explicit and per-folder.
 **Exit code zero is not success.** MakeMKV works around bad reads and exits
 clean, so `disc-rip` scans its output for corruption messages and flags the disc
 regardless of exit status.
+
+**A title index is a position, not an identity.** It depends on the minimum
+length used to enumerate, so every MakeMKV call has to agree on that value or
+the wrong title gets ripped. Rips are verified against the expected runtime for
+the same reason.
 
 **Some discs fight back.** Lionsgate releases in particular ship dozens of decoy
 playlists — RED 2 presents 130 feature-length titles, identical in chapter
