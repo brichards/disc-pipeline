@@ -19,9 +19,11 @@ LEDGER = ROOT / "ledger.jsonl"
 OVERRIDES = ROOT / "overrides.json"
 
 # Where finished media ends up. Movies with extras ship as a folder; a feature
-# with no kept extras ships as a bare file.
-NAS_MOVIES = Path("/Volumes/Media/Movies")
-NAS_TV = Path("/Volumes/Media/TV Shows")
+# with no kept extras ships as a bare file. Overridable so the ship stage can
+# be exercised against a scratch volume.
+NAS_ROOT = Path(os.environ.get("DISC_PIPELINE_NAS", "/Volumes/Media")).expanduser()
+NAS_MOVIES = NAS_ROOT / "Movies"
+NAS_TV = NAS_ROOT / "TV Shows"
 
 MAKEMKVCON = Path("/Applications/MakeMKV.app/Contents/MacOS/makemkvcon")
 
