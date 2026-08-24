@@ -42,14 +42,21 @@ def main():
     parser.add_argument("--model", default=None)
     parser.add_argument("--frames-only", action="store_true",
                         help="build the inventory and sheets, skip the agent")
+    parser.add_argument("--from-log", action="store_true",
+                        help="re-derive plan.json from the last saved agent run")
     args = parser.parse_args()
 
     if not probe.have_tools():
         notify.fail("ffmpeg and ffprobe are required")
-    if not args.frames_only and not agent.available():
+    if not (args.frames_only or args.from_log) and not agent.available():
         notify.fail("the claude CLI is not on PATH")
 
     name, media_dir, work_dir, slug = resolve_target(args.target)
+
+    # An agent run costs minutes and real money, so a change to how the plan is
+    # parsed or presented should not require paying for the answer twice.
+    if args.from_log:
+        return _replan(name, media_dir, work_dir, slug)
     files = sorted(p for p in media_dir.glob("*.mkv") if p.is_file())
     if not files:
         notify.fail(f"no .mkv files in {media_dir}")
@@ -114,25 +121,39 @@ def main():
                 pass
         notify.fail(error)
 
+    _write_plan(plan, name, media_dir, work_dir, slug, files=len(inventory))
+    return 0
+
+
+def _replan(name, media_dir, work_dir, slug):
+    saved = work_dir / "logs" / "identify.json"
+    if not saved.exists():
+        notify.fail(f"no saved agent run at {saved}")
+    plan, error = agent._extract_plan(saved.read_text(encoding="utf-8"))
+    if error:
+        notify.fail(error)
+    _write_plan(plan, name, media_dir, work_dir, slug, files=len(plan["items"]))
+    return 0
+
+
+def _write_plan(plan, name, media_dir, work_dir, slug, files):
     plan["_meta"] = {
         "name": name,
         "media_dir": str(media_dir),
         "generated": manifest.now(),
-        "files": len(inventory),
+        "files": files,
     }
     plan_file = work_dir / "plan.json"
     plan_file.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
-
     _report(plan)
     notify.say(f"\nPlan: {plan_file}")
-    notify.say(f"Review with: disc-apply {args.target}")
-
+    notify.say(f"Review with: disc-apply {work_dir.parent if slug is None else slug}")
     if slug:
         try:
             manifest.advance(manifest.load(slug), manifest.IDENTIFIED)
         except (OSError, ValueError):
             pass
-    return 0
+    return plan_file
 
 
 def _report(plan):
