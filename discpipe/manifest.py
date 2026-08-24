@@ -90,9 +90,18 @@ def all_discs():
     return out
 
 
-def hold(data, reason):
+def hold(data, reason, retryable=False):
+    """Park a disc for attention.
+
+    retryable marks a hold whose cause is external and may simply go away --
+    no disk space, share not mounted. Those can be retried by running the stage
+    again once the condition clears. A hold that needs a decision -- an
+    unresolved decoy disc, a damaged title -- is not retryable, and re-running
+    will land in the same place.
+    """
     data["state"] = HELD
     data["held_reason"] = reason
+    data["held_retryable"] = bool(retryable)
     save(data)
     return data
 

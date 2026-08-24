@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Where every disc in the queue stands, and what it is waiting on.
+
+A log answers "what happened". This answers "what needs me now" -- which is a
+different question, and the one that matters when four discs are in flight and
+two of the stages are gates. Reads state from disk; starts nothing.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import config, disc, manifest, notify, plan as planlib
+
+# What to do next, per state.
+NEXT = {
+    manifest.QUEUED: ("waiting to rip", "disc-rip"),
+    manifest.RIPPED: ("ready to identify", "disc-identify {t}"),
+    manifest.IDENTIFIED: ("NEEDS YOU -- review the names", "disc-apply {t}"),
+    manifest.APPLIED: ("ready to transcode", "disc-transcode {t}"),
+    manifest.TRANSCODED: ("ready to ship", "disc-ship {t}"),
+    manifest.SHIPPED: ("NEEDS YOU -- retention", "disc-cleanup"),
+    manifest.DONE: ("done", ""),
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Show the state of the queue.")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args()
+
+    rows = _rows()
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+
+    free = disc.free_bytes(config.ROOT)
+    notify.say(f"\n{config.ROOT}    {notify.human_bytes(free)} free")
+
+    if not rows:
+        notify.say("\n  Queue is empty.")
+        return 0
+
+    notify.say("")
+    width = max(len(r["name"]) for r in rows)
+    for row in rows:
+        flag = "!" if row["needs_you"] else " "
+        notify.say(f" {flag} {row['name']:<{width}}  {row['state']:<10} {row['detail']}")
+        if row["command"]:
+            notify.say(f"   {'':<{width}}  -> {row['command']}")
+
+    waiting = [r for r in rows if r["needs_you"]]
+    if waiting:
+        notify.say(f"\n{len(waiting)} disc(s) waiting on you.")
+    return 0
+
+
+def _rows():
+    rows = []
+    if not config.ROOT.exists():
+        return rows
+
+    for path in sorted(config.ROOT.iterdir()):
+        if not path.is_dir() or path.name.startswith("."):
+            continue
+        row = _queue_row(path) or _loose_row(path)
+        if row:
+            rows.append(row)
+    return rows
+
+
+def _queue_row(path):
+    try:
+        data = manifest.load(path.name)
+    except (OSError, ValueError):
+        return None
+
+    state = data.get("state", "?")
+    detail, command = NEXT.get(state, ("", ""))
+    needs_you = state in (manifest.IDENTIFIED, manifest.SHIPPED)
+
+    if state == manifest.HELD:
+        detail = data.get("held_reason", "held")
+        retryable = data.get("held_retryable")
+        # A hold recorded before the rip finished can always be retried by
+        # running the stage again -- it re-scans and re-checks from scratch.
+        # Holds recorded later need a decision, so they are flagged for you.
+        if retryable or not (path / "plan.json").exists():
+            detail += "  [re-run to retry]"
+            command = "disc-rip"
+        else:
+            needs_you = True
+            command = ""
+    else:
+        detail = _progress(path, data, state) or detail
+
+    return {
+        "name": path.name,
+        "state": state,
+        "detail": detail,
+        "command": command.format(t=path.name) if command else "",
+        "needs_you": needs_you,
+    }
+
+
+def _loose_row(path):
+    """A directory of named files rather than a queue entry -- no manifest."""
+    work = path / ".disc-pipeline"
+    if not (work / "plan.json").exists():
+        return None
+    try:
+        plan = planlib.load(work)
+    except SystemExit:
+        return None
+
+    kept = [i for i in plan.get("items", [])
+            if planlib.outcome(i)[0] in (planlib.FEATURE, planlib.EXTRA)]
+    done = sum(1 for i in kept if i.get("transcode", {}).get("status") == "done")
+    shipped = plan.get("_shipped")
+
+    if shipped:
+        state, detail, command = "shipped", f"at {shipped['destination']}", ""
+    elif kept and done == len(kept):
+        state, detail, command = "transcoded", f"{done} file(s)", f'disc-ship "{path}"'
+    elif done:
+        state, detail = "transcoding", f"{done}/{len(kept)} file(s)"
+        command = f'disc-transcode "{path}"'
+    else:
+        state, detail = "applied", f"{len(kept)} file(s) kept"
+        command = f'disc-transcode "{path}"'
+
+    return {"name": path.name, "state": state, "detail": detail,
+            "command": command, "needs_you": False}
+
+
+def _progress(path, data, state):
+    """A count that means something for the stage the disc is sitting in."""
+    if state in (manifest.QUEUED, manifest.RIPPED):
+        titles = data.get("titles", [])
+        done = sum(1 for t in titles
+                   if t.get("rip", {}).get("status") == "done")
+        if titles:
+            return f"{done}/{len(titles)} title(s) ripped"
+        return ""
+
+    try:
+        plan = planlib.load(path)
+    except SystemExit:
+        return ""
+    kept = [i for i in plan.get("items", [])
+            if planlib.outcome(i)[0] in (planlib.FEATURE, planlib.EXTRA)]
+    if state == manifest.IDENTIFIED:
+        return f"{len(plan.get('items', []))} file(s) proposed"
+    done = sum(1 for i in kept if i.get("transcode", {}).get("status") == "done")
+    if state == manifest.APPLIED:
+        return f"{done}/{len(kept)} transcoded"
+    return f"{len(kept)} file(s)"
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

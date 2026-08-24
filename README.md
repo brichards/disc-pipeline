@@ -64,7 +64,7 @@ The rest are not per-rip:
 
 ```sh
 disc-rip                    # scan the drive, triage titles, rip, eject
-disc-status                 # what's in the queue and what each disc is waiting on
+disc-status                 # where every disc stands and what it's waiting on
 disc-cleanup                # retention prompts for shipped, verified discs
 disc-run --watch            # drain the queue until it's idle
 ```
@@ -132,6 +132,37 @@ of the environment, neither of which updates itself.
 **Identification costs money and runs serially.** Roughly $1.44 and four
 minutes per disc. Use `--no-identify` if you would rather rip a stack first and
 identify later.
+
+### Watching a session
+
+Everything a stage prints goes to **one log at the queue root**, tagged with
+the disc it belongs to, so a stack of discs is a single file to tail:
+
+```sh
+tail -f ~/Movies/Rips/watch.log
+```
+
+The tag matters because ripping is serialised on the drive lock but
+identification is not — one disc's identify can overlap the next disc's rip.
+
+That log answers *what is happening*. For *where does everything stand*, which
+is the question when several discs are queued behind two gates:
+
+```sh
+disc-status
+```
+
+```
+/Users/brian/Movies/Rips    150.2 GB free
+
+ ! casino-royale-f49b43  held       needs 52.4 GB, 17.6 GB free  [re-run to retry]
+                         -> disc-rip
+   warm-bodies-a99d66    applied    3/12 transcoded
+                         -> disc-transcode warm-bodies-a99d66
+```
+
+A `!` marks a disc waiting on you. `--json` gives the same thing
+machine-readably.
 
 ### If nothing happens on insert
 

@@ -5,6 +5,7 @@ Gates do not -- the disc is not going anywhere, and interrupting you to say a
 thing succeeded is how notifications get ignored. Use disc-status for those.
 """
 
+import os
 import shlex
 import subprocess
 import sys
@@ -31,7 +32,16 @@ def _applescript_string(text):
     return '"' + str(text).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+# Set by disc-watch so several discs can share one tailable log without their
+# output becoming impossible to attribute.
+LOG_PREFIX = os.environ.get("DISC_LOG_PREFIX", "")
+
+
 def say(message):
+    if LOG_PREFIX and message:
+        message = "\n".join(
+            f"{LOG_PREFIX}{line}" for line in str(message).split("\n")
+        )
     print(message, flush=True)
 
 
