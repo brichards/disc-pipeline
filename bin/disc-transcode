@@ -45,12 +45,16 @@ def main():
     extras = [k for k in keepers if k["action"] != planlib.FEATURE]
     folder = _folder_name(features, plan, name)
     out_root = work_dir / "transcoded"
-    out_dir = out_root / folder if extras else out_root
+
+    # A folder whenever more than one file ships, not only when extras exist.
+    # Two editions of a feature need one too: Plex expects both cuts inside
+    # Movies/Taken (2008)/, and a bare pair in Movies/ reads as two films.
+    out_dir = out_root / folder if len(keepers) > 1 else out_root
 
     notify.say(f"\n{plan.get('title', name)} -- {len(features)} feature(s), "
                f"{len(extras)} extra(s)")
     notify.say(f"Output: {out_dir}"
-               + ("" if extras else "  (bare file -- no extras kept)"))
+               + ("" if len(keepers) > 1 else "  (bare file -- single title)"))
 
     todo = []
     for keeper in keepers:
