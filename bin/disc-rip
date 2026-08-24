@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import config, disc, makemkv, manifest, notify, triage
+from discpipe import config, disc, makemkv, manifest, notify, probe, triage
 
 
 def main():
@@ -146,8 +146,15 @@ def main():
             f"Ripping title {title.index} "
             f"({title.duration}, {notify.human_bytes(title.size_bytes)})"
         )
-        code, trouble, transcript = makemkv.rip(args.disc, title.index, raw_dir)
+        code, trouble, transcript = makemkv.rip(
+            args.disc, title.index, raw_dir, min_length
+        )
         ok = code == 0 and output.exists()
+        mismatch = ok and not _duration_matches(output, title.seconds)
+        if mismatch:
+            # The output is not the title that was asked for. Never let this
+            # pass: a wrong-but-plausible file is worse than a missing one.
+            ok = False
         record["rip"] = {
             "status": "done" if ok else "failed",
             "exit_code": code,
@@ -155,6 +162,11 @@ def main():
             "warnings": trouble,
             "at": manifest.now(),
         }
+        if mismatch:
+            record["rip"]["error"] = (
+                f"output runs {probe.ffprobe(output)['duration']}, "
+                f"expected {title.duration}"
+            )
         manifest.save(data)
 
         if ok:
@@ -166,16 +178,25 @@ def main():
             (logs / f"rip-title-{title.index:02d}.log").write_text(
                 transcript, encoding="utf-8"
             )
-            notify.say(f"  ! failed (exit {code}) -- continuing")
+            detail = record["rip"].get("error") or f"exit {code}"
+            notify.say(f"  ! failed ({detail}) -- continuing")
 
     return _finish(data, label, kind, slug, fingerprint, raw_dir,
                    done, failed, len(have))
 
 
-# MakeMKV's own size estimate runs a few percent under the finished file, so a
-# partial rip is well below it. Anything at least this fraction of the estimate
-# is treated as complete.
-COMPLETE_FRACTION = 0.9
+# A ripped title is identified by its runtime, never by its size. Size was the
+# first thing tried here and it silently adopted files containing the wrong
+# title, because several extras on a disc are within a few percent of each
+# other. Runtime is unambiguous.
+DURATION_TOLERANCE = 5
+
+
+def _duration_matches(path, expected_seconds):
+    info = probe.ffprobe(path)
+    if not info or not expected_seconds:
+        return False
+    return abs(info["seconds"] - expected_seconds) <= DURATION_TOLERANCE
 
 
 def _split_todo(candidates, records, raw_dir, redo):
@@ -197,8 +218,7 @@ def _split_todo(candidates, records, raw_dir, redo):
             continue
 
         if not redo and status != "failed" and output.exists():
-            size = output.stat().st_size
-            if title.size_bytes and size >= title.size_bytes * COMPLETE_FRACTION:
+            if _duration_matches(output, title.seconds):
                 record["rip"] = {
                     "status": "done",
                     "exit_code": 0,

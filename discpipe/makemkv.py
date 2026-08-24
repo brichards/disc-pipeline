@@ -216,7 +216,7 @@ def scan(disc=0, min_length=config.MIN_TITLE_LENGTH):
     return parse(result.stdout), result.stdout
 
 
-def rip(disc, title_index, out_dir, on_line=None):
+def rip(disc, title_index, out_dir, min_length, on_line=None):
     """Rip one title, streaming output so trouble is caught as it happens.
 
     Returns (exit_code, warnings, transcript). A zero exit code is not
@@ -231,6 +231,7 @@ def rip(disc, title_index, out_dir, on_line=None):
             str(config.MAKEMKVCON),
             "-r",
             "--noscan",
+            f"--minlength={min_length}",
             "mkv",
             f"disc:{disc}",
             str(title_index),
