@@ -55,7 +55,9 @@ def main():
         notify.fail(f"no .mkv files in {media_dir}")
 
     frames_dir = work_dir / "frames"
+    scratch_dir = work_dir / "scratch"
     work_dir.mkdir(parents=True, exist_ok=True)
+    scratch_dir.mkdir(exist_ok=True)
     notify.say(f"{name}: {len(files)} file(s)")
 
     inventory = []
@@ -89,7 +91,9 @@ def main():
         return 0
 
     notify.say("Identifying (this takes a few minutes)...")
-    prompt = agent.build_prompt(name, media_dir, work_dir, inventory_file, frames_dir)
+    prompt = agent.build_prompt(
+        name, media_dir, work_dir, inventory_file, frames_dir, scratch_dir
+    )
     plan, raw, error = agent.run(
         prompt,
         cwd=work_dir,

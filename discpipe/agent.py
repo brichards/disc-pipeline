@@ -85,19 +85,23 @@ def available():
     return shutil.which("claude") is not None
 
 
-def build_prompt(name, media_dir, work_dir, inventory_file, frames_dir):
+def build_prompt(name, media_dir, work_dir, inventory_file, frames_dir, scratch_dir):
     return f"""Invoke the plex-media-namer skill, then identify every file in this rip.
 
 Rip directory: {media_dir}
 Inventory (durations, dimensions, stream layout): {inventory_file}
 Contact sheets: {frames_dir}
+Scratch space for any frames you pull yourself: {scratch_dir}
 
 Two sheets per file. `--head.png` covers the first 75 seconds in 3-second
 steps, which is where a title card lands once the studio logo clears.
 `--scan.png` samples 16 frames across the whole runtime, for content and end
 credits. Read them with the Read tool. You have ffmpeg and ffprobe if you need
 a frame the sheets do not cover -- comparing tails, or checking whether a file
-duplicates part of the feature.
+duplicates part of the feature. Run them as a single command with absolute
+paths: shell chaining like `cd somewhere && ffmpeg ...` is refused by the
+permission allowlist, and the scratch directory already exists so you do not
+need mkdir.
 
 The folder is named "{name}", which is a strong hint at the film but not proof.
 Confirm it, then look up what this specific disc release actually ships so you
