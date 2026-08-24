@@ -27,19 +27,15 @@ MAKEMKVCON = Path("/Applications/MakeMKV.app/Contents/MacOS/makemkvcon")
 
 # Shortest title worth ripping.
 #
-# 75s, not the 300s this started at. Measured on Warm Bodies, whose extras sit
-# in a contiguous block of stream files (00545-00560): a 300s floor took seven
-# of them and dropped eight, cutting through the middle of one set -- keeping
-# 00556 at 5:07 and 00558 at 12:38 while discarding 00557 at 4:43 between them.
+# Five minutes, by policy rather than derivation: extras shorter than this
+# aren't wanted, so there is no value in ripping them only to reject them at
+# the review gate.
 #
-# The floor is set just under the shortest real extra observed across these
-# discs (Kick-Ass 2 ships "Alien-cestry.com" at 1:20). Junk -- logos, menu
-# loops, transitions -- clusters at 60s and below.
-#
-# The asymmetry justifies erring low: a menu loop that slips through costs one
-# keystroke at the review gate and a few hundred megabytes, while an extra that
-# never gets ripped is invisible and needs the disc back to recover.
-MIN_TITLE_LENGTH = 75
+# One edge worth knowing. A hard floor clips things that are five minutes in
+# spirit: on Warm Bodies it drops 00557.m2ts at 4:43, which sits between two
+# siblings of the same featurette block that are kept (00556 at 5:07, 00558 at
+# 12:38). Nudge to 285 if that near-miss ever matters.
+MIN_TITLE_LENGTH = 300
 
 # Free space required before a rip: MakeMKV's own size estimate plus headroom.
 SPACE_HEADROOM_BYTES = 10 * 1024**3
