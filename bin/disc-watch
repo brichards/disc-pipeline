@@ -115,10 +115,15 @@ def _check(args, foreground=False):
 
 
 def _start(slug, args, foreground):
-    """Rip, then identify. Detached and logged unless asked to stay put."""
-    log_dir = config.ROOT / slug / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log = log_dir / "watch.log"
+    """Rip, then identify.
+
+    Output goes to the one log at the queue root, prefixed with the disc slug,
+    so a stack of discs is a single file to tail. Ripping is serialised on the
+    drive lock, but identification is not, so one disc's identify can overlap
+    the next disc's rip -- hence the prefix.
+    """
+    (config.ROOT / slug / "logs").mkdir(parents=True, exist_ok=True)
+    log = config.ROOT / "watch.log"
 
     steps = [[str(BIN / "disc-rip"), "--wait"]]
     if not args.no_identify:
@@ -134,14 +139,16 @@ def _start(slug, args, foreground):
     script = " && ".join(
         " ".join(_quote(part) for part in step) for step in steps
     )
+    environment = dict(os.environ, DISC_LOG_PREFIX=f"[{slug}] ")
     with open(log, "a", encoding="utf-8") as handle:
         subprocess.Popen(
             ["/bin/sh", "-c", script],
             stdout=handle, stderr=handle,
             stdin=subprocess.DEVNULL,
             start_new_session=True,
+            env=environment,
         )
-    notify.say(f"Running in the background; log at {log}")
+    notify.say(f"Running in the background; tail {log}")
     return 0
 
 
