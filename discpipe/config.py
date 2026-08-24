@@ -27,15 +27,15 @@ MAKEMKVCON = Path("/Applications/MakeMKV.app/Contents/MacOS/makemkvcon")
 
 # Shortest title worth ripping.
 #
-# Five minutes, by policy rather than derivation: extras shorter than this
-# aren't wanted, so there is no value in ripping them only to reject them at
-# the review gate.
+# Four minutes. The policy is that extras under five minutes aren't wanted, so
+# there is no value in ripping them only to reject them at the review gate --
+# but a hard floor at exactly 300s clips things that are five minutes in
+# spirit. On Warm Bodies it dropped 00557.m2ts at 4:43, sitting between two
+# siblings of the same featurette block that were kept (00556 at 5:07, 00558
+# at 12:38). 240s buys that margin back.
 #
-# One edge worth knowing. A hard floor clips things that are five minutes in
-# spirit: on Warm Bodies it drops 00557.m2ts at 4:43, which sits between two
-# siblings of the same featurette block that are kept (00556 at 5:07, 00558 at
-# 12:38). Nudge to 285 if that near-miss ever matters.
-MIN_TITLE_LENGTH = 300
+# Raise it if too much junk starts reaching the review gate.
+MIN_TITLE_LENGTH = 240
 
 # Free space required before a rip: MakeMKV's own size estimate plus headroom.
 SPACE_HEADROOM_BYTES = 10 * 1024**3
