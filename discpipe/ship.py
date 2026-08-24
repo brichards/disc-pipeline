@@ -11,7 +11,16 @@ from pathlib import Path
 
 # Preserve times but not permissions or ownership: SMB cannot honour them, and
 # asking makes rsync noisy about failures that do not matter.
-TRANSFER_ARGS = ["--recursive", "--times", "--partial", "--human-readable"]
+#
+# --partial-dir rather than --partial. Both resume an interrupted transfer, but
+# plain --partial leaves the half-written file under its real name, which in a
+# Plex library is a movie that looks complete and plays truncated. Sending
+# partials to a hidden sibling directory means the final name only ever appears
+# on a finished file. rsync excludes the partial directory from the transfer
+# automatically.
+PARTIAL_DIR = ".disc-pipeline-partial"
+TRANSFER_ARGS = ["--recursive", "--times", f"--partial-dir={PARTIAL_DIR}",
+                 "--human-readable"]
 VERIFY_ARGS = ["--recursive", "--times", "--checksum", "--dry-run",
                "--itemize-changes"]
 
