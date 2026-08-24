@@ -28,7 +28,8 @@ MARK = {
 
 def main():
     parser = argparse.ArgumentParser(description="Review and apply a naming plan.")
-    parser.add_argument("target", help="queue slug, or a directory of .mkv files")
+    parser.add_argument("target", nargs="?", default=None,
+                        help="queue slug or directory; defaults to the current directory")
     parser.add_argument("--yes", action="store_true",
                         help="accept every proposal without review")
     parser.add_argument("--reset", action="store_true",

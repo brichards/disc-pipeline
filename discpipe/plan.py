@@ -24,22 +24,34 @@ DECLINE = "reject"  # reject the file regardless of what was proposed
 KEEP = "keep"  # leave the file exactly as it is
 
 
-def resolve_target(value):
-    """Accept a queue slug or a path.
+def resolve_target(value=None):
+    """Accept a queue slug, a path, or nothing at all.
 
-    Returns (name, media_dir, work_dir, slug). For a queue entry the media
-    lives in raw/ and the working files sit beside it. For a loose directory
-    the media is the directory itself and the working files go into a dotted
-    subdirectory, which keeps them out of Plex's way.
+    With no argument the current directory is the target, so you can cd into a
+    rip and run the stages bare. Returns (name, media_dir, work_dir, slug).
+    For a queue entry the media lives in raw/ and the working files sit beside
+    it. For a loose directory the media is the directory itself and the working
+    files go into a dotted subdirectory, which keeps them out of Plex's way.
     """
-    candidate = Path(value).expanduser()
+    candidate = Path.cwd() if value in (None, "") else Path(value).expanduser()
+
     if candidate.is_dir():
+        # Running bare from the queue root is a likely slip and would otherwise
+        # produce a confusing "no .mkv files here".
+        try:
+            if candidate.resolve() == config.ROOT.resolve():
+                notify.fail(
+                    f"{candidate} is the queue root, not a rip -- "
+                    "name a disc, or cd into one"
+                )
+        except OSError:
+            pass
         raw = candidate / "raw"
         if raw.is_dir():
             return candidate.name, raw, candidate, candidate.name
         return candidate.name, candidate, candidate / ".disc-pipeline", None
 
-    disc_dir = config.ROOT / value
+    disc_dir = config.ROOT / str(value)
     if disc_dir.is_dir():
         return value, disc_dir / "raw", disc_dir, value
 

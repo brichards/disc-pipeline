@@ -18,7 +18,8 @@ from discpipe import agent, manifest, notify, plan as planlib, probe
 
 def main():
     parser = argparse.ArgumentParser(description="Identify the files in a rip.")
-    parser.add_argument("target", help="queue slug, or a directory of .mkv files")
+    parser.add_argument("target", nargs="?", default=None,
+                        help="queue slug or directory; defaults to the current directory")
     parser.add_argument("--refresh-frames", action="store_true",
                         help="rebuild contact sheets even if they exist")
     parser.add_argument("--timeout", type=int, default=agent.DEFAULT_TIMEOUT)
