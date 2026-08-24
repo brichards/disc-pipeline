@@ -67,9 +67,10 @@ def main():
             notify.say(f"  have  {source.name}  ({destination.name} exists)")
             _mark(keeper["item"], "done", destination)
             continue
-        if done and not args.force:
-            notify.say(f"  done  {source.name}")
-            continue
+        if done:
+            # Status said done but the output is gone. Trusting the record over
+            # the filesystem is how a deleted file becomes a missing shipment.
+            notify.say(f"  redo  {source.name}  (marked done, output missing)")
         todo.append((keeper, source, script, info))
 
     planlib.save(plan, work_dir)
