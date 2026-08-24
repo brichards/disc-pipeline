@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--disc", type=int, default=0, help="MakeMKV drive index")
     parser.add_argument("--force", action="store_true", help="re-rip a known disc")
     parser.add_argument("--dry-run", action="store_true", help="scan and triage only")
+    parser.add_argument("--redo", action="store_true",
+                        help="re-rip titles already marked done")
     args = parser.parse_args()
 
     try:
@@ -69,7 +71,7 @@ def main():
     (logs / "scan.txt").write_text(raw, encoding="utf-8")
 
     candidates = [t for t in info.titles if t.seconds >= min_length]
-    data["titles"] = [_title_record(t) for t in candidates]
+    data["titles"] = _merge_titles(data.get("titles", []), candidates)
     data["triage"] = triage.summarize(info.titles, min_length)
     manifest.save(data)
 
@@ -96,7 +98,24 @@ def main():
             notify.say("Resolve with: disc-resolve " + slug)
             return 1
 
-    needed = disc.estimated_bytes(candidates) + config.SPACE_HEADROOM_BYTES
+    raw_dir = manifest.subdir(slug, "raw")
+    records = {r["source_file"]: r for r in data["titles"]}
+    todo, have = _split_todo(candidates, records, raw_dir, args.redo)
+    if not args.dry_run:  # a dry run reports; it records nothing
+        manifest.save(data)
+
+    for title in have:
+        notify.say(f"  have  title {title.index}  ({title.output_name})")
+    for title in todo:
+        notify.say(f"  rip   title {title.index}  {title.duration}  "
+                   f"{notify.human_bytes(title.size_bytes)}")
+
+    if not todo:
+        notify.say("\nEverything on this disc is already ripped.")
+        return _finish(data, label, kind, slug, fingerprint, raw_dir,
+                       0, 0, len(have))
+
+    needed = disc.estimated_bytes(todo) + config.SPACE_HEADROOM_BYTES
     available = disc.free_bytes(config.ROOT)
     notify.say(
         f"Need {notify.human_bytes(needed)}, "
@@ -115,37 +134,123 @@ def main():
         notify.say("Dry run -- stopping before the rip.")
         return 0
 
-    raw_dir = manifest.subdir(slug, "raw")
-    warnings = []
-    for title in candidates:
+    done = failed = 0
+
+    # One damaged segment should not cost the rest of the disc. The disc is in
+    # the drive now; putting it back later is the expensive part. So a failure
+    # is recorded against its title and the run moves on.
+    for title in todo:
+        record = records[title.source_file]
+        output = raw_dir / title.output_name
         notify.say(
             f"Ripping title {title.index} "
             f"({title.duration}, {notify.human_bytes(title.size_bytes)})"
         )
-        code, trouble = makemkv.rip(args.disc, title.index, raw_dir)
-        warnings.extend(trouble)
-        if code != 0:
-            reason = f"title {title.index} failed with exit code {code}"
-            data["rip"]["exit_code"] = code
-            data["rip"]["warnings"] = warnings
-            manifest.hold(data, reason)
-            notify.alert("Rip failed", f"{label}: {reason}")
-            return 1
+        code, trouble, transcript = makemkv.rip(args.disc, title.index, raw_dir)
+        ok = code == 0 and output.exists()
+        record["rip"] = {
+            "status": "done" if ok else "failed",
+            "exit_code": code,
+            "output": output.name,
+            "warnings": trouble,
+            "at": manifest.now(),
+        }
+        manifest.save(data)
 
-    data["rip"]["exit_code"] = 0
+        if ok:
+            done += 1
+            if trouble:
+                notify.say(f"  ! {len(trouble)} read problem(s) worked around")
+        else:
+            failed += 1
+            (logs / f"rip-title-{title.index:02d}.log").write_text(
+                transcript, encoding="utf-8"
+            )
+            notify.say(f"  ! failed (exit {code}) -- continuing")
+
+    return _finish(data, label, kind, slug, fingerprint, raw_dir,
+                   done, failed, len(have))
+
+
+# MakeMKV's own size estimate runs a few percent under the finished file, so a
+# partial rip is well below it. Anything at least this fraction of the estimate
+# is treated as complete.
+COMPLETE_FRACTION = 0.9
+
+
+def _split_todo(candidates, records, raw_dir, redo):
+    """Decide what still needs ripping, and adopt anything already on disk.
+
+    A manifest written before per-title status existed -- or one interrupted
+    hard enough to lose it -- still has the finished files sitting in raw/.
+    Rather than re-rip an hour of video, adopt an output that is present and
+    close enough to its expected size, and record it.
+    """
+    todo, have = [], []
+    for title in candidates:
+        record = records[title.source_file]
+        output = raw_dir / title.output_name
+        status = record.get("rip", {}).get("status")
+
+        if not redo and status == "done" and output.exists():
+            have.append(title)
+            continue
+
+        if not redo and status != "failed" and output.exists():
+            size = output.stat().st_size
+            if title.size_bytes and size >= title.size_bytes * COMPLETE_FRACTION:
+                record["rip"] = {
+                    "status": "done",
+                    "exit_code": 0,
+                    "output": output.name,
+                    "warnings": [],
+                    "at": manifest.now(),
+                    "adopted": True,
+                }
+                have.append(title)
+                continue
+        todo.append(title)
+    return todo, have
+
+
+def _merge_titles(previous, candidates):
+    """Rebuild the title list from a fresh scan without losing rip status.
+
+    Keyed on the source playlist rather than the index, because MakeMKV's
+    numbering is not guaranteed stable across scans.
+    """
+    kept = {r.get("source_file"): r.get("rip") for r in previous if r.get("rip")}
+    records = []
+    for title in candidates:
+        record = _title_record(title)
+        if title.source_file in kept:
+            record["rip"] = kept[title.source_file]
+        records.append(record)
+    return records
+
+
+def _finish(data, label, kind, slug, fingerprint, raw_dir,
+            done, failed, skipped):
+    warnings = [w for r in data["titles"] for w in r.get("rip", {}).get("warnings", [])]
     data["rip"]["warnings"] = warnings
     data["rip"]["ripped_at"] = manifest.now()
+    data["rip"]["exit_code"] = 0 if not failed else 1
 
-    manifest.ledger_append(
-        {
-            "fingerprint": fingerprint,
-            "label": label,
-            "disc_type": kind,
-            "slug": slug,
-            "first_seen": data["created"],
-            "shipped_as": None,
-        }
+    notify.say(
+        f"\n{done} ripped, {skipped} already had, {failed} failed"
+        + (f", {len(warnings)} read problem(s) worked around" if warnings else "")
     )
+
+    if failed:
+        broken = [r["index"] for r in data["titles"]
+                  if r.get("rip", {}).get("status") == "failed"]
+        reason = f"{failed} title(s) failed: {', '.join(str(b) for b in broken)}"
+        manifest.hold(data, reason)
+        notify.alert("Rip incomplete", f"{label}: {reason}")
+        notify.say("Re-run disc-rip to retry only the failed titles.")
+        return 1
+
+    _record_in_ledger(data, label, kind, slug, fingerprint)
 
     # A clean exit code is not a clean rip. MakeMKV retries a bad sector, works
     # around it, and still returns zero -- leaving a glitched file and no error.
@@ -156,13 +261,24 @@ def main():
             "Rip finished with warnings",
             f"{label}: {len(warnings)} read problem(s) -- check the tail",
         )
-        for line in warnings[:5]:
-            notify.say("  " + line)
         return 0
 
     manifest.advance(data, manifest.RIPPED)
-    notify.say(f"Ripped {len(candidates)} title(s) to {raw_dir}")
+    notify.say(f"Ripped to {raw_dir}")
     return 0
+
+
+def _record_in_ledger(data, label, kind, slug, fingerprint):
+    if manifest.ledger_find(fingerprint):
+        return
+    manifest.ledger_append({
+        "fingerprint": fingerprint,
+        "label": label,
+        "disc_type": kind,
+        "slug": slug,
+        "first_seen": data["created"],
+        "shipped_as": None,
+    })
 
 
 def _title_record(title):
