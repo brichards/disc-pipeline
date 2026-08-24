@@ -13,24 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import agent, config, manifest, notify, probe
-
-
-def resolve_target(value):
-    """Accept a queue slug or a path. Returns (name, media_dir, work_dir, slug)."""
-    candidate = Path(value).expanduser()
-    if candidate.is_dir():
-        media = candidate
-        raw = candidate / "raw"
-        if raw.is_dir():  # a queue directory given by path
-            return candidate.name, raw, candidate, candidate.name
-        return candidate.name, media, candidate / ".disc-pipeline", None
-
-    disc_dir = config.ROOT / value
-    if disc_dir.is_dir():
-        return value, disc_dir / "raw", disc_dir, value
-
-    notify.fail(f"no queue entry or directory named {value!r}")
+from discpipe import agent, manifest, notify, plan as planlib, probe
 
 
 def main():
@@ -51,7 +34,7 @@ def main():
     if not (args.frames_only or args.from_log) and not agent.available():
         notify.fail("the claude CLI is not on PATH")
 
-    name, media_dir, work_dir, slug = resolve_target(args.target)
+    name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
 
     # An agent run costs minutes and real money, so a change to how the plan is
     # parsed or presented should not require paying for the answer twice.
