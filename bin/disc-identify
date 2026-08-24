@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Stage 02 -- work out what each ripped file actually is.
+
+Probes every file, builds contact sheets, and hands the lot to a headless
+agent. Writes plan.json and nothing else: identification proposes, disc-apply
+disposes. Runs against a queue slug, or against any directory of .mkv files.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import agent, config, manifest, notify, probe
+
+
+def resolve_target(value):
+    """Accept a queue slug or a path. Returns (name, media_dir, work_dir, slug)."""
+    candidate = Path(value).expanduser()
+    if candidate.is_dir():
+        media = candidate
+        raw = candidate / "raw"
+        if raw.is_dir():  # a queue directory given by path
+            return candidate.name, raw, candidate, candidate.name
+        return candidate.name, media, candidate / ".disc-pipeline", None
+
+    disc_dir = config.ROOT / value
+    if disc_dir.is_dir():
+        return value, disc_dir / "raw", disc_dir, value
+
+    notify.fail(f"no queue entry or directory named {value!r}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Identify the files in a rip.")
+    parser.add_argument("target", help="queue slug, or a directory of .mkv files")
+    parser.add_argument("--refresh-frames", action="store_true",
+                        help="rebuild contact sheets even if they exist")
+    parser.add_argument("--timeout", type=int, default=agent.DEFAULT_TIMEOUT)
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--frames-only", action="store_true",
+                        help="build the inventory and sheets, skip the agent")
+    args = parser.parse_args()
+
+    if not probe.have_tools():
+        notify.fail("ffmpeg and ffprobe are required")
+    if not args.frames_only and not agent.available():
+        notify.fail("the claude CLI is not on PATH")
+
+    name, media_dir, work_dir, slug = resolve_target(args.target)
+    files = sorted(p for p in media_dir.glob("*.mkv") if p.is_file())
+    if not files:
+        notify.fail(f"no .mkv files in {media_dir}")
+
+    frames_dir = work_dir / "frames"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    notify.say(f"{name}: {len(files)} file(s)")
+
+    inventory = []
+    for index, path in enumerate(files, 1):
+        info = probe.ffprobe(path)
+        if not info:
+            notify.say(f"  [{index}/{len(files)}] {path.name}: unreadable, skipping")
+            continue
+
+        head = frames_dir / f"{path.stem}--head.png"
+        if args.refresh_frames or not head.exists():
+            info["sheets"] = probe.contact_sheets(path, info["seconds"], frames_dir)
+        else:
+            info["sheets"] = {
+                "head": head.name,
+                "scan": f"{path.stem}--scan.png",
+            }
+        inventory.append(info)
+        notify.say(
+            f"  [{index}/{len(files)}] {path.name}  {info['duration']}  "
+            f"{info['width']}x{info['height']}  "
+            f"{info['audio_tracks']}a/{info['subtitle_tracks']}s"
+        )
+
+    inventory_file = work_dir / "inventory.json"
+    inventory_file.write_text(json.dumps(inventory, indent=2) + "\n", encoding="utf-8")
+    notify.say(f"Inventory: {inventory_file}")
+
+    if args.frames_only:
+        notify.say(f"Sheets: {frames_dir}")
+        return 0
+
+    notify.say("Identifying (this takes a few minutes)...")
+    prompt = agent.build_prompt(name, media_dir, work_dir, inventory_file, frames_dir)
+    plan, raw, error = agent.run(
+        prompt,
+        cwd=work_dir,
+        extra_dirs=[media_dir, work_dir],
+        timeout=args.timeout,
+        model=args.model,
+    )
+
+    (work_dir / "logs").mkdir(exist_ok=True)
+    (work_dir / "logs" / "identify.json").write_text(raw or "", encoding="utf-8")
+
+    if error:
+        notify.alert("Identify failed", f"{name}: {error}")
+        if slug:
+            try:
+                manifest.hold(manifest.load(slug), f"identify failed: {error}")
+            except (OSError, ValueError):
+                pass
+        notify.fail(error)
+
+    plan["_meta"] = {
+        "name": name,
+        "media_dir": str(media_dir),
+        "generated": manifest.now(),
+        "files": len(inventory),
+    }
+    plan_file = work_dir / "plan.json"
+    plan_file.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+
+    _report(plan)
+    notify.say(f"\nPlan: {plan_file}")
+    notify.say(f"Review with: disc-apply {args.target}")
+
+    if slug:
+        try:
+            manifest.advance(manifest.load(slug), manifest.IDENTIFIED)
+        except (OSError, ValueError):
+            pass
+    return 0
+
+
+def _report(plan):
+    counts = {}
+    for item in plan.get("items", []):
+        counts[item.get("action", "?")] = counts.get(item.get("action", "?"), 0) + 1
+    notify.say(
+        f"\n{plan.get('title', '?')} ({plan.get('year', '?')}) -- "
+        + ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
+    )
+    if plan.get("disc_notes"):
+        notify.say(f"{plan['disc_notes']}\n")
+
+    for item in plan.get("items", []):
+        mark = {"feature": "*", "extra": "+", "reject": "-", "unknown": "?"}.get(
+            item.get("action"), " "
+        )
+        target = item.get("new_name") or f"({item.get('action')})"
+        notify.say(f" {mark} {item['file']}")
+        notify.say(f"     -> {target}   [{item.get('confidence', '?')}]")
+        notify.say(f"     {item.get('evidence', '')}")
+
+    if plan.get("missing_from_rip"):
+        notify.say("\nOn the disc but not ripped:")
+        for missing in plan["missing_from_rip"]:
+            notify.say(f"  - {missing}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
