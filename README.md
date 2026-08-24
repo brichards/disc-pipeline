@@ -62,11 +62,28 @@ disc-apply taken-2-2012-a91c4f
 The rest are not per-rip:
 
 ```sh
-disc-rip                    # scan the drive, triage titles, rip
+disc-rip                    # scan the drive, triage titles, rip, eject
 disc-status                 # what's in the queue and what each disc is waiting on
 disc-cleanup                # retention prompts for shipped, verified discs
 disc-run --watch            # drain the queue until it's idle
 ```
+
+## Feeding discs unattended
+
+Install the watcher once. It is event-driven — launchd only wakes it when
+`/Volumes` changes — so it costs nothing on the days you are not ripping.
+
+```sh
+disc-watch --install
+```
+
+Insert a disc and it rips, identifies, and ejects, then you feed the next one.
+`disc-watch --status` reports whether it is loaded, `--uninstall` removes it,
+and `--once` runs the check in the foreground for testing.
+
+A disc is **ejected only on a clean rip**. One with failed titles or
+worked-around read errors stays in the drive, because the next thing to try is
+cleaning it and re-ripping — which is easier with the disc where it is.
 
 Each stage checks its own prerequisites and says which directory it looked in —
 `disc-identify` needs `.mkv` files, `disc-apply` needs a `plan.json`.
