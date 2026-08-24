@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""Stage 00 -- notice a disc and start work on it.
+
+Event-driven, not a timer: launchd only wakes this when /Volumes changes, so
+it costs nothing on the days you are not ripping. Its failure mode is benign
+and self-announcing -- if it stops working you insert a disc, nothing happens,
+and you run disc-rip by hand.
+
+Everything it starts is detached and logged, so ejecting the disc and feeding
+the next one does not require watching a terminal.
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import config, disc, locks, manifest, notify
+
+BIN = Path(__file__).resolve().parent
+AGENT_LABEL = "net.rzen.disc-pipeline.watch"
+PLIST = Path.home() / "Library/LaunchAgents" / f"{AGENT_LABEL}.plist"
+
+PLIST_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>{label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{script}</string>
+  </array>
+  <key>WatchPaths</key>
+  <array>
+    <string>/Volumes</string>
+  </array>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>{log}</string>
+  <key>StandardErrorPath</key><string>{log}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>{path}</string>
+  </dict>
+</dict>
+</plist>
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Watch for discs and start the pipeline.")
+    parser.add_argument("--install", action="store_true",
+                        help="write and load the LaunchAgent")
+    parser.add_argument("--uninstall", action="store_true",
+                        help="unload and remove the LaunchAgent")
+    parser.add_argument("--status", action="store_true",
+                        help="report whether the agent is loaded")
+    parser.add_argument("--once", action="store_true",
+                        help="run the check now, in the foreground")
+    parser.add_argument("--no-identify", action="store_true",
+                        help="rip only; do not chain into identification")
+    args = parser.parse_args()
+
+    if args.install:
+        return _install()
+    if args.uninstall:
+        return _uninstall()
+    if args.status:
+        return _status()
+    return _check(args, foreground=args.once)
+
+
+def _check(args, foreground=False):
+    discs = disc.find_discs()
+    if not discs:
+        notify.say("No disc in the drive.")
+        return 0
+    mount, kind = discs[0]
+
+    # If a rip is already running, this firing is the eject or some unrelated
+    # volume change. Nothing to do.
+    try:
+        with locks.hold(locks.DRIVE):
+            pass
+    except locks.Busy:
+        notify.say("A rip is already in progress.")
+        return 0
+
+    try:
+        fingerprint = disc.fingerprint(mount, kind)
+    except (OSError, ValueError) as exc:
+        notify.say(f"Cannot read {mount}: {exc}")
+        return 0
+
+    label = mount.name
+    slug = disc.slugify(label, fingerprint)
+    seen = manifest.ledger_find(fingerprint)
+    if seen:
+        notify.say(f"{label} was already ripped as {seen.get('slug')}.")
+        if disc.eject(mount):
+            notify.say(f"Ejected {label}.")
+        return 0
+
+    free = disc.free_bytes(config.ROOT)
+    if free < config.SPACE_HEADROOM_BYTES:
+        message = f"{notify.human_bytes(free)} free -- not enough to start"
+        notify.alert("Disc not ripped", f"{label}: {message}")
+        return 1
+
+    notify.say(f"{label}: starting rip ({slug})")
+    return _start(slug, args, foreground)
+
+
+def _start(slug, args, foreground):
+    """Rip, then identify. Detached and logged unless asked to stay put."""
+    log_dir = config.ROOT / slug / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log = log_dir / "watch.log"
+
+    steps = [[str(BIN / "disc-rip"), "--wait"]]
+    if not args.no_identify:
+        steps.append([str(BIN / "disc-identify"), slug])
+
+    if foreground:
+        for step in steps:
+            code = subprocess.run(step, check=False).returncode
+            if code != 0:
+                return code
+        return 0
+
+    script = " && ".join(
+        " ".join(_quote(part) for part in step) for step in steps
+    )
+    with open(log, "a", encoding="utf-8") as handle:
+        subprocess.Popen(
+            ["/bin/sh", "-c", script],
+            stdout=handle, stderr=handle,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    notify.say(f"Running in the background; log at {log}")
+    return 0
+
+
+def _quote(value):
+    return "'" + str(value).replace("'", "'\\''") + "'"
+
+
+def _install():
+    PLIST.parent.mkdir(parents=True, exist_ok=True)
+    PLIST.write_text(
+        PLIST_TEMPLATE.format(
+            label=AGENT_LABEL,
+            script=BIN / "disc-watch",
+            log=config.ROOT / "watch.log",
+            # launchd does not inherit a shell PATH, and every stage shells out
+            # to ffmpeg, rsync, and the claude CLI.
+            path=os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        ),
+        encoding="utf-8",
+    )
+    config.ensure_root()
+    subprocess.run(["launchctl", "unload", str(PLIST)],
+                   capture_output=True, check=False)
+    result = subprocess.run(["launchctl", "load", str(PLIST)],
+                            capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        notify.fail((result.stderr or "launchctl load failed").strip())
+    notify.say(f"Installed and loaded {AGENT_LABEL}")
+    notify.say(f"  plist  {PLIST}")
+    notify.say(f"  log    {config.ROOT / 'watch.log'}")
+    return 0
+
+
+def _uninstall():
+    subprocess.run(["launchctl", "unload", str(PLIST)],
+                   capture_output=True, check=False)
+    if PLIST.exists():
+        PLIST.unlink()
+    notify.say(f"Removed {AGENT_LABEL}")
+    return 0
+
+
+def _status():
+    result = subprocess.run(["launchctl", "list"], capture_output=True,
+                            text=True, check=False)
+    loaded = any(AGENT_LABEL in line for line in result.stdout.splitlines())
+    notify.say(f"{AGENT_LABEL}: {'loaded' if loaded else 'not loaded'}")
+    notify.say(f"  plist  {PLIST} ({'present' if PLIST.exists() else 'missing'})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
