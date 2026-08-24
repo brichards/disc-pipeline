@@ -198,7 +198,7 @@ def parse(text):
     return info
 
 
-def scan(disc=0, min_length=config.MIN_LENGTH_BD):
+def scan(disc=0, min_length=config.MIN_TITLE_LENGTH):
     """Enumerate titles. Returns (DiscInfo, raw_output)."""
     result = subprocess.run(
         [
