@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""Stage 01 -- scan the drive, triage the titles, rip what's worth keeping.
+
+Rips everything over the minimum length rather than trying to pick extras
+here. Nothing on this side of the rip can tell a featurette from a slice of
+the feature: that needs title cards and runtimes, which is disc-identify's
+job. Pruning happens after naming, before transcoding, so no CPU is spent on
+titles that turn out to be junk.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import config, disc, makemkv, manifest, notify, triage
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Rip a disc into the queue.")
+    parser.add_argument("--disc", type=int, default=0, help="MakeMKV drive index")
+    parser.add_argument("--force", action="store_true", help="re-rip a known disc")
+    parser.add_argument("--dry-run", action="store_true", help="scan and triage only")
+    args = parser.parse_args()
+
+    try:
+        config.check_environment()
+    except EnvironmentError as exc:
+        notify.alert("Rip cannot start", str(exc))
+        notify.fail(str(exc))
+
+    discs = disc.find_discs()
+    if not discs:
+        notify.fail("no Blu-ray or DVD found in /Volumes")
+    mount, kind = discs[0]
+    notify.say(f"Found {kind} at {mount}")
+
+    fingerprint = disc.fingerprint(mount, kind)
+    label = mount.name
+    slug = disc.slugify(label, fingerprint)
+
+    seen = manifest.ledger_find(fingerprint)
+    if seen and not args.force:
+        notify.say(
+            f"Already ripped {seen.get('first_seen', '?')}"
+            f" as {seen.get('shipped_as') or seen.get('slug')}."
+            f" Use --force to rip again."
+        )
+        return 0
+
+    config.ensure_root()
+    try:
+        data = manifest.load(slug)
+    except (OSError, ValueError):
+        data = manifest.new(slug, fingerprint, label, kind)
+        manifest.save(data)
+
+    min_length = config.MIN_TITLE_LENGTH
+
+    notify.say(f"Scanning titles (minimum {min_length}s)...")
+    info, raw = makemkv.scan(args.disc, min_length)
+    if not info.titles:
+        manifest.hold(data, "makemkvcon returned no titles")
+        notify.alert("Rip held", f"{label}: no titles returned")
+        return 1
+
+    logs = manifest.subdir(slug, "logs")
+    (logs / "scan.txt").write_text(raw, encoding="utf-8")
+
+    candidates = [t for t in info.titles if t.seconds >= min_length]
+    data["titles"] = [_title_record(t) for t in candidates]
+    data["triage"] = triage.summarize(info.titles, min_length)
+    manifest.save(data)
+
+    _report(candidates, data["triage"])
+
+    if data["triage"]["obfuscated"]:
+        override = manifest.overrides_load().get(fingerprint)
+        if override:
+            wanted = override["playlist"]
+            picked = [t for t in candidates if t.source_file == wanted]
+            if not picked:
+                manifest.hold(data, f"override names {wanted}, not on this disc")
+                notify.alert("Rip held", f"{label}: override {wanted} not found")
+                return 1
+            notify.say(f"Override: ripping {wanted} only")
+            candidates = picked
+        else:
+            reason = (
+                f"{data['triage']['decoy_cluster_size']} near-identical "
+                f"feature-length titles; correct playlist unknown"
+            )
+            manifest.hold(data, reason)
+            notify.alert("Rip held", f"{label}: {reason}")
+            notify.say("Resolve with: disc-resolve " + slug)
+            return 1
+
+    needed = disc.estimated_bytes(candidates) + config.SPACE_HEADROOM_BYTES
+    available = disc.free_bytes(config.ROOT)
+    notify.say(
+        f"Need {notify.human_bytes(needed)}, "
+        f"{notify.human_bytes(available)} free"
+    )
+    if available < needed:
+        reason = (
+            f"needs {notify.human_bytes(needed)}, "
+            f"{notify.human_bytes(available)} free"
+        )
+        manifest.hold(data, reason)
+        notify.alert("Rip held", f"{label}: {reason}")
+        return 1
+
+    if args.dry_run:
+        notify.say("Dry run -- stopping before the rip.")
+        return 0
+
+    raw_dir = manifest.subdir(slug, "raw")
+    warnings = []
+    for title in candidates:
+        notify.say(
+            f"Ripping title {title.index} "
+            f"({title.duration}, {notify.human_bytes(title.size_bytes)})"
+        )
+        code, trouble = makemkv.rip(args.disc, title.index, raw_dir)
+        warnings.extend(trouble)
+        if code != 0:
+            reason = f"title {title.index} failed with exit code {code}"
+            data["rip"]["exit_code"] = code
+            data["rip"]["warnings"] = warnings
+            manifest.hold(data, reason)
+            notify.alert("Rip failed", f"{label}: {reason}")
+            return 1
+
+    data["rip"]["exit_code"] = 0
+    data["rip"]["warnings"] = warnings
+    data["rip"]["ripped_at"] = manifest.now()
+
+    manifest.ledger_append(
+        {
+            "fingerprint": fingerprint,
+            "label": label,
+            "disc_type": kind,
+            "slug": slug,
+            "first_seen": data["created"],
+            "shipped_as": None,
+        }
+    )
+
+    # A clean exit code is not a clean rip. MakeMKV retries a bad sector, works
+    # around it, and still returns zero -- leaving a glitched file and no error.
+    if warnings:
+        data["rip"]["suspect"] = True
+        manifest.advance(data, manifest.RIPPED)
+        notify.alert(
+            "Rip finished with warnings",
+            f"{label}: {len(warnings)} read problem(s) -- check the tail",
+        )
+        for line in warnings[:5]:
+            notify.say("  " + line)
+        return 0
+
+    manifest.advance(data, manifest.RIPPED)
+    notify.say(f"Ripped {len(candidates)} title(s) to {raw_dir}")
+    return 0
+
+
+def _title_record(title):
+    return {
+        "index": title.index,
+        "duration": title.duration,
+        "seconds": title.seconds,
+        "chapters": title.chapters,
+        "size_bytes": title.size_bytes,
+        "source_file": title.source_file,
+        "segment_map": title.segment_map,
+        "output_name": title.output_name,
+        "resolution": title.resolution,
+        "audio_tracks": len(title.audio),
+        "subtitle_tracks": len(title.subtitles),
+        "state": "ripped",
+    }
+
+
+def _report(titles, summary):
+    notify.say(
+        f"{summary['titles_seen']} titles, "
+        f"{len(titles)} over the minimum, "
+        f"longest {notify.human_duration(summary['longest_seconds'])}"
+    )
+    if summary["obfuscated"]:
+        notify.say(
+            f"Decoy cluster: {summary['decoy_cluster_size']} near-identical titles "
+            f"(order consistency {summary['segment_order_consistency']})"
+        )
+    # On an obfuscated disc the listing is noise -- 130 near-identical rows
+    # tell you nothing that the cluster line above didn't.
+    limit = 5 if summary["obfuscated"] else 40
+    for title in titles[:limit]:
+        notify.say(
+            f"  {title.index:>3}  {title.duration:>9}  {title.chapters:>3}ch  "
+            f"{notify.human_bytes(title.size_bytes):>9}  {title.source_file}"
+        )
+    if len(titles) > limit:
+        notify.say(f"  ... {len(titles) - limit} more")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
