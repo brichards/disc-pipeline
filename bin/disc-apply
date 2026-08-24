@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Stage 03 -- review the naming proposal, then act on it.
+
+The only gate on the happy path. Everything before this proposes; nothing
+before this has touched a filename. Decisions are written back into plan.json
+as you make them, so an interrupted review picks up where it stopped.
+
+Files are renamed or moved aside. Nothing is ever deleted.
+"""
+
+import argparse
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import manifest, notify, plan as planlib
+
+MARK = {
+    planlib.FEATURE: "*",
+    planlib.EXTRA: "+",
+    planlib.REJECT: "-",
+    planlib.UNKNOWN: "?",
+}
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Review and apply a naming plan.")
+    parser.add_argument("target", help="queue slug, or a directory of .mkv files")
+    parser.add_argument("--yes", action="store_true",
+                        help="accept every proposal without review")
+    parser.add_argument("--reset", action="store_true",
+                        help="discard previous decisions and review again")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="show what would happen, change nothing")
+    args = parser.parse_args()
+
+    name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
+    plan = planlib.load(work_dir)
+    items = plan.get("items", [])
+    if not items:
+        notify.fail("the plan has no items")
+
+    # A dry run reports; it does not record decisions or move files.
+    persist = not args.dry_run
+
+    if args.reset:
+        for item in items:
+            item.pop("decision", None)
+        if persist:
+            planlib.save(plan, work_dir)
+
+    _summary(plan, name)
+
+    if args.yes:
+        for item in items:
+            item.setdefault("decision", planlib.ACCEPT)
+        if persist:
+            planlib.save(plan, work_dir)
+    elif planlib.pending(plan):
+        if not _review(plan, work_dir, media_dir, persist):
+            notify.say("Stopped. Decisions so far are saved.")
+            return 0
+    else:
+        notify.say("Every item already reviewed. Re-run with --reset to start over.")
+
+    moves, rejects, untouched = _resolve_actions(plan, media_dir, work_dir)
+    if not _confirm(moves, rejects, untouched, args):
+        return 0
+
+    applied = _execute(moves, rejects, args.dry_run)
+    if args.dry_run:
+        notify.say(f"\nDry run -- {applied} change(s) not made.")
+        return 0
+
+    notify.say(f"\nApplied {applied} change(s).")
+    if slug:
+        try:
+            manifest.advance(manifest.load(slug), manifest.APPLIED)
+        except (OSError, ValueError):
+            pass
+    return 0
+
+
+def _summary(plan, name):
+    counts = {}
+    for item in plan.get("items", []):
+        counts[item.get("action", "?")] = counts.get(item.get("action", "?"), 0) + 1
+    notify.say(f"\n{plan.get('title', name)} ({plan.get('year', '?')})")
+    notify.say("  " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
+    if plan.get("disc_notes"):
+        notify.say("\n" + plan["disc_notes"])
+    if plan.get("missing_from_rip"):
+        notify.say("\nOn the disc but not ripped:")
+        for missing in plan["missing_from_rip"]:
+            notify.say(f"  - {missing}")
+
+
+def _review(plan, work_dir, media_dir, persist=True):
+    """Walk the undecided items. Returns False if the reviewer quit."""
+    items = plan["items"]
+    total = len(items)
+    notify.say(
+        "\n[enter] accept   e edit name   r reject   k keep as-is"
+        "   f show frames   q quit\n"
+    )
+
+    for index, item in enumerate(items, 1):
+        if item.get("decision"):
+            continue
+        while True:
+            _show(item, index, total)
+            try:
+                choice = input("  > ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                notify.say("")
+                return False
+
+            if choice in ("", "a", "y"):
+                item["decision"] = planlib.ACCEPT
+            elif choice == "r":
+                item["decision"] = planlib.DECLINE
+            elif choice == "k":
+                item["decision"] = planlib.KEEP
+            elif choice == "q":
+                return False
+            elif choice == "f":
+                _open_frames(item, work_dir)
+                continue
+            elif choice == "e":
+                edited = _edit(item)
+                if edited is None:
+                    continue
+                item["new_name"] = edited
+                item["decision"] = planlib.EDIT
+                if item.get("action") not in (planlib.FEATURE, planlib.EXTRA):
+                    item["action"] = planlib.EXTRA
+            else:
+                notify.say("  ? unrecognised")
+                continue
+            break
+        if persist:
+            planlib.save(plan, work_dir)
+    return True
+
+
+def _show(item, index, total):
+    action = item.get("action", "?")
+    proposed = item.get("new_name") or f"({action})"
+    notify.say(f"[{index}/{total}] {item['file']}")
+    notify.say(f"   {MARK.get(action, ' ')} {proposed}   [{action}, "
+               f"{item.get('confidence', '?')}]")
+    for line in _wrap(item.get("evidence", ""), 92):
+        notify.say(f"     {line}")
+
+
+def _wrap(text, width):
+    import textwrap
+    return textwrap.wrap(text, width) or [""]
+
+
+def _edit(item):
+    notify.say("   New filename (blank to cancel). Extras end in -<type>.mkv,")
+    notify.say("   one of: behindthescenes deleted featurette interview scene "
+               "short trailer other")
+    try:
+        value = input("   name> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    if not value:
+        return None
+    if not value.endswith(".mkv"):
+        value += ".mkv"
+    return value
+
+
+def _open_frames(item, work_dir):
+    stem = Path(item["file"]).stem
+    sheets = [work_dir / "frames" / f"{stem}--{kind}.png" for kind in ("head", "scan")]
+    found = [s for s in sheets if s.exists()]
+    if not found:
+        notify.say("   (no contact sheets for this file)")
+        return
+    subprocess.run(["open", *[str(s) for s in found]], check=False)
+
+
+def _resolve_actions(plan, media_dir, work_dir):
+    """Turn decisions into concrete file operations, without performing them."""
+    moves, rejects, untouched = [], [], []
+    reject_dir = work_dir / "rejected"
+
+    for item in plan["items"]:
+        source = media_dir / item["file"]
+        action, new_name = planlib.outcome(item)
+
+        if action in (planlib.FEATURE, planlib.EXTRA) and new_name:
+            target = media_dir / new_name
+            if source.name == target.name:
+                untouched.append((item["file"], "already named"))
+            else:
+                moves.append((source, target, item))
+        elif action == planlib.REJECT:
+            rejects.append((source, reject_dir / item["file"], item))
+        else:
+            untouched.append((item["file"], action))
+    return moves, rejects, untouched
+
+
+def _confirm(moves, rejects, untouched, args):
+    notify.say("")
+    for source, target, _ in moves:
+        notify.say(f"  rename  {source.name}")
+        notify.say(f"       -> {target.name}")
+    for source, _, _ in rejects:
+        notify.say(f"  aside   {source.name}")
+    for filename, why in untouched:
+        notify.say(f"  leave   {filename}  ({why})")
+
+    problems = _preflight(moves, rejects)
+    if problems:
+        notify.say("")
+        for problem in problems:
+            notify.say(f"  ! {problem}")
+        notify.fail("nothing applied")
+
+    if not moves and not rejects:
+        notify.say("\nNothing to do.")
+        return False
+    if args.yes or args.dry_run:
+        return True
+    try:
+        return input(f"\nApply {len(moves)} rename(s), "
+                     f"{len(rejects)} set aside? [y/N] ").strip().lower() == "y"
+    except (EOFError, KeyboardInterrupt):
+        notify.say("")
+        return False
+
+
+def _preflight(moves, rejects):
+    """Every operation is checked before any is performed."""
+    problems = []
+    claimed = {}
+    for source, target, _ in moves + rejects:
+        if not source.exists():
+            problems.append(f"missing: {source.name}")
+        if target.exists():
+            problems.append(f"target exists: {target}")
+        if target in claimed:
+            problems.append(f"two files want the name {target.name}")
+        claimed[target] = source
+    return problems
+
+
+def _execute(moves, rejects, dry_run):
+    count = 0
+    for source, target, _ in moves:
+        if not dry_run:
+            source.rename(target)
+        count += 1
+    for source, target, _ in rejects:
+        if not dry_run:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(target))
+        count += 1
+    return count
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
