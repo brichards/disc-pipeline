@@ -216,12 +216,14 @@ def scan(disc=0, min_length=config.MIN_TITLE_LENGTH):
     return parse(result.stdout), result.stdout
 
 
-def rip(disc, title_index, out_dir, on_line=None):
+def rip(disc, title_index, out_dir, min_length, on_line=None):
     """Rip one title, streaming output so trouble is caught as it happens.
 
-    Returns (exit_code, warnings). A zero exit code is not sufficient: MakeMKV
-    works around unreadable sectors and still reports success, which yields a
-    glitched file and no error. Callers must check the warnings list.
+    Returns (exit_code, warnings, transcript). A zero exit code is not
+    sufficient: MakeMKV works around unreadable sectors and still reports
+    success, which yields a glitched file and no error. Callers must check the
+    warnings list. The transcript is kept so a failure can be diagnosed without
+    re-reading the disc.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen(
@@ -229,6 +231,7 @@ def rip(disc, title_index, out_dir, on_line=None):
             str(config.MAKEMKVCON),
             "-r",
             "--noscan",
+            f"--minlength={min_length}",
             "mkv",
             f"disc:{disc}",
             str(title_index),
@@ -241,14 +244,16 @@ def rip(disc, title_index, out_dir, on_line=None):
     )
 
     warnings = []
+    transcript = []
     for line in process.stdout:
         line = line.rstrip()
         match = _MSG.match(line)
         rendered = match.group(2) if match else line
+        transcript.append(rendered)
         if _TROUBLE.search(rendered):
             warnings.append(rendered)
         if on_line:
             on_line(rendered)
     process.wait()
 
-    return process.returncode, warnings
+    return process.returncode, warnings, "\n".join(transcript)
