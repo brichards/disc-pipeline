@@ -143,7 +143,7 @@ def _run(args, discs):
             f"needs {notify.human_bytes(needed)}, "
             f"{notify.human_bytes(available)} free"
         )
-        manifest.hold(data, reason, retryable=True)
+        manifest.hold(data, reason, retryable=True, stage="rip")
         notify.alert("Rip held", f"{label}: {reason}")
         notify.say("Free some space and run disc-rip again -- "
                    "the disc is still in the drive.")
