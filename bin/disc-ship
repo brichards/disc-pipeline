@@ -36,6 +36,17 @@ def main():
         notify.fail(f"nothing transcoded in {work_dir / 'transcoded'} -- "
                     "run disc-transcode first")
 
+    # Shipping mid-transcode sends whatever happens to be finished and settles
+    # the bare-versus-folder shape on a partial set, which then needs undoing
+    # on the NAS when the rest lands.
+    unfinished = _unfinished(plan)
+    if unfinished and not args.force:
+        notify.say(f"\n{plan.get('title', name)}: transcode is not finished")
+        for title in unfinished[:8]:
+            notify.say(f"  waiting  {title}")
+        notify.fail(f"{len(unfinished)} file(s) still to transcode "
+                    "-- use --force to ship what is ready")
+
     library = _library(plan, slug)
     destination = library / source.name
     notify.say(f"\n{plan.get('title', name)}")
@@ -51,17 +62,17 @@ def main():
     notify.say(f"  vol   {root} (mounted)")
 
     promotion = _promotion(source, destination)
-    if promotion:
+    for bare in promotion:
         # Promotion moves the old bare file into the folder we are about to
         # write into, so it can create a collision the preflight below cannot
         # see yet -- the destination does not exist at check time.
-        if (source / promotion.name).exists() and not args.force:
-            reason = (f"{promotion.name} is both on the NAS and in this "
-                      "shipment -- promoting would collide")
+        if (source / bare.name).exists() and not args.force:
+            reason = (f"{bare.name} is both on the NAS and in this shipment "
+                      "-- promoting would collide")
             _hold(slug, reason)
             notify.alert("Ship blocked", f"{name}: {reason}")
             notify.fail(reason + " -- use --force to replace the copy on the NAS")
-        notify.say(f"  note  promoting existing {promotion.name} into a movie folder")
+        notify.say(f"  note  promoting existing {bare.name} into a movie folder")
 
     pairs = ship.plan_transfer(source, destination)
     clashes = [d for _, d in pairs if d.exists()]
@@ -90,11 +101,11 @@ def main():
 
 
 def _ship(plan, work_dir, slug, name, source, destination, promotion, args):
-    if promotion:
+    for bare in promotion:
         try:
-            ship.promote(promotion, destination)
+            ship.promote(bare, destination)
         except (OSError, FileExistsError) as exc:
-            _hold(slug, f"could not promote {promotion.name}: {exc}")
+            _hold(slug, f"could not promote {bare.name}: {exc}")
             notify.alert("Ship blocked", f"{name}: promotion failed")
             notify.fail(str(exc))
 
@@ -124,6 +135,18 @@ def _ship(plan, work_dir, slug, name, source, destination, promotion, args):
     return 0
 
 
+def _unfinished(plan):
+    """Kept files that have not finished transcoding."""
+    waiting = []
+    for item in plan.get("items", []):
+        action, new_name = planlib.outcome(item)
+        if action not in (planlib.FEATURE, planlib.EXTRA) or not new_name:
+            continue
+        if item.get("transcode", {}).get("status") != "done":
+            waiting.append(new_name)
+    return waiting
+
+
 def _source(work_dir):
     """What disc-transcode produced: a movie folder, or a bare feature file."""
     root = work_dir / "transcoded"
@@ -147,14 +170,21 @@ def _library(plan, slug):
 
 
 def _promotion(source, destination):
-    """A bare file occupying the folder name we are about to ship into.
+    """Bare files that belong inside the folder we are about to ship into.
 
-    Only happens when a title shipped feature-only and extras arrived later.
+    Happens when a title shipped as a single file and a second one turned up
+    later -- an extra, or another edition. Edition suffixes count: a lone
+    `Taken (2008) {edition-Theatrical}.mkv` in the library belongs inside
+    `Taken (2008)/` once the extended cut exists.
     """
     if not source.is_dir():
-        return None
-    bare = destination.with_suffix(".mkv")
-    return bare if bare.is_file() else None
+        return []
+    stem = destination.name
+    found = []
+    for path in destination.parent.glob("*.mkv"):
+        if path.stem == stem or path.stem.startswith(stem + " {"):
+            found.append(path)
+    return sorted(found)
 
 
 def _progress(line):

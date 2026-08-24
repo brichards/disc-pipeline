@@ -9,6 +9,7 @@ to know whether it has been ripped before.
 import hashlib
 import re
 import shutil
+import subprocess
 import unicodedata
 from pathlib import Path
 
@@ -87,3 +88,20 @@ def free_bytes(path):
 def estimated_bytes(titles):
     """MakeMKV's own size estimates for the titles we intend to rip."""
     return sum(t.size_bytes for t in titles)
+
+
+def eject(mount):
+    """Spit the disc out so the next one can go in unattended.
+
+    diskutil unmounts and ejects in one step; drutil is the fallback for a
+    drive that has already been unmounted but still holds the media.
+    """
+    for command in (["diskutil", "eject", str(mount)], ["drutil", "eject"]):
+        try:
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if result.returncode == 0:
+            return True
+    return False

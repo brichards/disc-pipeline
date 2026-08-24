@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import config, disc, makemkv, manifest, notify, probe, triage
+from discpipe import config, disc, locks, makemkv, manifest, notify, probe, triage
 
 
 def main():
@@ -24,6 +24,10 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="scan and triage only")
     parser.add_argument("--redo", action="store_true",
                         help="re-rip titles already marked done")
+    parser.add_argument("--no-eject", action="store_true",
+                        help="leave the disc in the drive when the rip is clean")
+    parser.add_argument("--wait", action="store_true",
+                        help="block for the drive lock instead of stepping aside")
     args = parser.parse_args()
 
     try:
@@ -35,6 +39,18 @@ def main():
     discs = disc.find_discs()
     if not discs:
         notify.fail("no Blu-ray or DVD found in /Volumes")
+
+    # One drive, one reader. A watcher that fires while a rip is running must
+    # step aside rather than fight for the disc.
+    try:
+        with locks.hold(locks.DRIVE, blocking=args.wait):
+            return _run(args, discs)
+    except locks.Busy as exc:
+        notify.say(f"{exc} -- another rip is in progress.")
+        return 0
+
+
+def _run(args, discs):
     mount, kind = discs[0]
     notify.say(f"Found {kind} at {mount}")
 
@@ -49,6 +65,7 @@ def main():
             f" as {seen.get('shipped_as') or seen.get('slug')}."
             f" Use --force to rip again."
         )
+        _eject(mount, args)
         return 0
 
     config.ensure_root()
@@ -113,7 +130,7 @@ def main():
     if not todo:
         notify.say("\nEverything on this disc is already ripped.")
         return _finish(data, label, kind, slug, fingerprint, raw_dir,
-                       0, 0, len(have))
+                       0, 0, len(have), mount, args)
 
     needed = disc.estimated_bytes(todo) + config.SPACE_HEADROOM_BYTES
     available = disc.free_bytes(config.ROOT)
@@ -182,7 +199,7 @@ def main():
             notify.say(f"  ! failed ({detail}) -- continuing")
 
     return _finish(data, label, kind, slug, fingerprint, raw_dir,
-                   done, failed, len(have))
+                   done, failed, len(have), mount, args)
 
 
 # A ripped title is checked by its runtime, never by its size. Size was tried
@@ -257,8 +274,20 @@ def _merge_titles(previous, candidates):
     return records
 
 
+def _eject(mount, args):
+    """Only on a clean run. A disc with failures or worked-around read errors
+    stays in the drive, because the next thing to try is cleaning it and going
+    again -- and that is easier with the disc where it is."""
+    if args.no_eject or args.dry_run:
+        return
+    if disc.eject(mount):
+        notify.say(f"Ejected {mount.name}")
+    else:
+        notify.say(f"Could not eject {mount.name}")
+
+
 def _finish(data, label, kind, slug, fingerprint, raw_dir,
-            done, failed, skipped):
+            done, failed, skipped, mount, args):
     warnings = [w for r in data["titles"] for w in r.get("rip", {}).get("warnings", [])]
     data["rip"]["warnings"] = warnings
     data["rip"]["ripped_at"] = manifest.now()
@@ -276,6 +305,7 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
         manifest.hold(data, reason)
         notify.alert("Rip incomplete", f"{label}: {reason}")
         notify.say("Re-run disc-rip to retry only the failed titles.")
+        notify.say("Disc left in the drive.")
         return 1
 
     _record_in_ledger(data, label, kind, slug, fingerprint)
@@ -289,10 +319,12 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
             "Rip finished with warnings",
             f"{label}: {len(warnings)} read problem(s) -- check the tail",
         )
+        notify.say("Disc left in the drive -- try cleaning it and re-ripping.")
         return 0
 
     manifest.advance(data, manifest.RIPPED)
     notify.say(f"Ripped to {raw_dir}")
+    _eject(mount, args)
     return 0
 
 
