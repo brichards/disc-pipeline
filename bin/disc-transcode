@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""Stage 04 -- transcode the files that survived review.
+
+Shapes the output exactly as it ships: a movie folder when extras were kept,
+a bare file when the feature is all there is, because Plex needs the folder for
+extras to attach and does not want one otherwise. That makes disc-ship a plain
+copy with no path rewriting.
+
+Status is tracked per file, not per disc. A two-hour feature is hours of CPU,
+and an interrupted run should resume at the next file rather than start over.
+"""
+
+import argparse
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import locks, manifest, notify, plan as planlib, probe, transcode
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Transcode a reviewed rip.")
+    parser.add_argument("target", nargs="?", default=None,
+                        help="queue slug or directory; defaults to the current directory")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="show the commands, transcode nothing")
+    parser.add_argument("--force", action="store_true",
+                        help="redo files already marked done")
+    parser.add_argument("--wait", action="store_true",
+                        help="block for the CPU lock instead of stepping aside")
+    parser.add_argument("--quiet", action="store_true",
+                        help="hide transcoder progress output")
+    args = parser.parse_args()
+
+    name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
+    plan = planlib.load(work_dir)
+
+    keepers = _keepers(plan, media_dir)
+    if not keepers:
+        notify.fail("nothing was kept -- run disc-apply first")
+
+    features = [k for k in keepers if k["action"] == planlib.FEATURE]
+    extras = [k for k in keepers if k["action"] != planlib.FEATURE]
+    folder = _folder_name(features, plan, name)
+    out_root = work_dir / "transcoded"
+    out_dir = out_root / folder if extras else out_root
+
+    notify.say(f"\n{plan.get('title', name)} -- {len(features)} feature(s), "
+               f"{len(extras)} extra(s)")
+    notify.say(f"Output: {out_dir}"
+               + ("" if extras else "  (bare file -- no extras kept)"))
+
+    todo = []
+    for keeper in keepers:
+        source = keeper["path"]
+        info = probe.ffprobe(source)
+        if not info:
+            notify.say(f"  skip  {source.name}: unreadable")
+            continue
+        script = transcode.route(info["height"])
+        destination = transcode.output_for(source, out_dir)
+        done = keeper["item"].get("transcode", {}).get("status") == "done"
+
+        if destination.exists() and not args.force:
+            notify.say(f"  have  {source.name}  ({destination.name} exists)")
+            _mark(keeper["item"], "done", destination)
+            continue
+        if done and not args.force:
+            notify.say(f"  done  {source.name}")
+            continue
+        todo.append((keeper, source, script, info))
+
+    planlib.save(plan, work_dir)
+
+    if not todo:
+        notify.say("\nEverything is already transcoded.")
+        return _finish(plan, work_dir, slug, out_dir)
+
+    absent = set()
+    for _, _, script, _ in todo:
+        absent |= set(transcode.missing_tools(script))
+    if absent:
+        notify.fail("missing tools: " + ", ".join(sorted(absent)))
+
+    notify.say("")
+    for _, source, script, info in todo:
+        notify.say(f"  {script:<20} {source.name}  ({info['height']}p)")
+
+    if args.dry_run:
+        notify.say("\nDry run -- nothing transcoded.")
+        return 0
+
+    try:
+        with locks.hold(locks.CPU, blocking=args.wait):
+            failures = _transcode_all(todo, out_dir, plan, work_dir, args)
+    except locks.Busy as exc:
+        notify.say(f"\n{exc} -- leaving this for the next pass.")
+        return 0
+
+    if failures:
+        notify.alert("Transcode failed", f"{name}: {failures} file(s)")
+        return 1
+    return _finish(plan, work_dir, slug, out_dir)
+
+
+def _keepers(plan, media_dir):
+    """Files that survived review, in the order they should be transcoded."""
+    out = []
+    for item in plan.get("items", []):
+        action, new_name = planlib.outcome(item)
+        if action not in (planlib.FEATURE, planlib.EXTRA) or not new_name:
+            continue
+        path = media_dir / new_name
+        if not path.exists():
+            notify.say(f"  gone  {new_name} (renamed or moved since review)")
+            continue
+        out.append({"item": item, "path": path, "action": action})
+    # Features first: the long pole, and the file you most want to see land.
+    out.sort(key=lambda k: 0 if k["action"] == planlib.FEATURE else 1)
+    return out
+
+
+def _folder_name(features, plan, fallback):
+    """The Plex movie folder, taken from the feature's own filename.
+
+    Prefer the edition-less feature: `Taken 2 (2012).mkv` gives the folder,
+    while `Taken 2 (2012) {edition-Unrated}.mkv` sits inside it.
+    """
+    plain = [f for f in features if "{" not in f["path"].name]
+    if plain:
+        return plain[0]["path"].stem
+    if features:
+        return features[0]["path"].stem.split(" {")[0]
+    title, year = plan.get("title"), plan.get("year")
+    return f"{title} ({year})" if title and year else fallback
+
+
+def _transcode_all(todo, out_dir, plan, work_dir, args):
+    failures = 0
+    for index, (keeper, source, script, info) in enumerate(todo, 1):
+        notify.say(f"\n[{index}/{len(todo)}] {script} {source.name}")
+        started = time.time()
+
+        code, destination = transcode.run(
+            source, out_dir, script,
+            on_line=None if args.quiet else _progress,
+        )
+        elapsed = int(time.time() - started)
+
+        if code == 0 and destination.exists():
+            _mark(keeper["item"], "done", destination, elapsed)
+            notify.say(f"      -> {destination.name}  ({elapsed // 60}m{elapsed % 60:02d}s)")
+        else:
+            failures += 1
+            _mark(keeper["item"], "failed", destination, elapsed, code)
+            notify.say(f"      ! failed (exit {code})")
+        planlib.save(plan, work_dir)
+    return failures
+
+
+def _progress(line):
+    if line.strip():
+        notify.say(f"      {line}")
+
+
+def _mark(item, status, destination, seconds=None, code=None):
+    record = {"status": status, "output": destination.name, "at": manifest.now()}
+    if seconds is not None:
+        record["seconds"] = seconds
+    if code is not None:
+        record["exit_code"] = code
+    item["transcode"] = record
+
+
+def _finish(plan, work_dir, slug, out_dir):
+    planlib.save(plan, work_dir)
+    notify.say(f"\nReady to ship from {out_dir}")
+    if slug:
+        try:
+            manifest.advance(manifest.load(slug), manifest.TRANSCODED)
+        except (OSError, ValueError):
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
