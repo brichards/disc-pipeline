@@ -40,10 +40,15 @@ POLL_INTERVAL = 30
 FEATURE_MIN_SECONDS = 60 * 60
 
 # Decoy detection. Titles within this fraction of the longest title that also
-# share its chapter count form a cluster; more than MAX than this many means the
-# disc is using playlist obfuscation and cannot be triaged on metadata alone.
+# draw on the same segment pool form a cluster; more than the threshold means
+# the disc is using playlist obfuscation and cannot be triaged on metadata.
 DECOY_DURATION_TOLERANCE = 0.10
 DECOY_CLUSTER_THRESHOLD = 6
+
+# Cluster members must draw on the same pool of stream segments as the longest
+# title. This is what keeps a TV season disc -- several similar-length titles
+# with disjoint segments -- from reading as an obfuscated movie.
+DECOY_SEGMENT_OVERLAP = 0.5
 
 
 def check_environment():
