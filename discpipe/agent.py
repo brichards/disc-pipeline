@@ -151,7 +151,12 @@ def run(prompt, cwd, extra_dirs=(), timeout=DEFAULT_TIMEOUT, model=None):
 
 
 def _extract_plan(stdout):
-    """Unwrap the CLI envelope and get at the structured result."""
+    """Unwrap the CLI envelope and get at the structured result.
+
+    With --json-schema the validated object arrives in `structured_output`;
+    `result` stays the agent's prose summary. Reading `result` gets you a
+    sentence about the plan rather than the plan.
+    """
     try:
         envelope = json.loads(stdout)
     except json.JSONDecodeError:
@@ -160,7 +165,10 @@ def _extract_plan(stdout):
     if isinstance(envelope, dict) and envelope.get("is_error"):
         return None, str(envelope.get("result", "agent reported an error"))[:500]
 
-    payload = envelope.get("result", envelope) if isinstance(envelope, dict) else envelope
+    if isinstance(envelope, dict) and isinstance(envelope.get("structured_output"), dict):
+        payload = envelope["structured_output"]
+    else:
+        payload = envelope.get("result", envelope) if isinstance(envelope, dict) else envelope
 
     if isinstance(payload, str):
         try:
