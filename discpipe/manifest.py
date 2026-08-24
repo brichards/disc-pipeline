@@ -29,7 +29,7 @@ HELD = "held"  # needs a human, see held_reason
 GATE_STATES = (IDENTIFIED, SHIPPED, HELD)
 
 
-def _now():
+def now():
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
@@ -43,8 +43,8 @@ def new(slug, fingerprint, label, disc_type):
         "media_type": "movie",
         "state": QUEUED,
         "held_reason": None,
-        "created": _now(),
-        "updated": _now(),
+        "created": now(),
+        "updated": now(),
         "titles": [],
         "rip": {"exit_code": None, "warnings": [], "ripped_at": None},
         "keep_source": "ask",
@@ -66,7 +66,7 @@ def load(slug):
 
 def save(data):
     """Write atomically so an interrupted save can't truncate the manifest."""
-    data["updated"] = _now()
+    data["updated"] = now()
     target = path_for(data["slug"])
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(".json.tmp")
@@ -148,7 +148,7 @@ def overrides_load():
 
 def overrides_set(fingerprint, playlist, note=""):
     data = overrides_load()
-    data[fingerprint] = {"playlist": playlist, "note": note, "recorded": _now()}
+    data[fingerprint] = {"playlist": playlist, "note": note, "recorded": now()}
     config.ensure_root()
     tmp = Path(str(config.OVERRIDES) + ".tmp")
     with open(tmp, "w", encoding="utf-8") as fh:
