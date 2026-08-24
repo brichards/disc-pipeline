@@ -39,18 +39,37 @@ they run as `disc-rip`, not `python3 disc-rip.py`.
 ## Usage
 
 Insert a disc and `disc-watch` starts a session automatically. Otherwise drive
-it by hand — every stage runs standalone:
+it by hand — every stage runs standalone.
+
+Stages that act on a rip take a queue slug or a directory, and **default to the
+current directory**, so the usual way to work is to cd into a rip:
 
 ```sh
-disc-status                 # what's in the queue and what each disc is waiting on
+cd ~/Movies/Rips/taken-2-2012-a91c4f
+disc-identify               # propose names for the ripped titles
+disc-apply                  # review the proposal, then rename
+disc-transcode
+disc-ship
+```
+
+Or name the target explicitly from anywhere:
+
+```sh
+disc-identify "~/Movies/Rips/Taken 2 (2012)"
+disc-apply taken-2-2012-a91c4f
+```
+
+The rest are not per-rip:
+
+```sh
 disc-rip                    # scan the drive, triage titles, rip
-disc-identify <disc>        # propose names for the ripped titles
-disc-apply <disc>           # review the proposal, then rename
-disc-transcode <disc>
-disc-ship <disc>
+disc-status                 # what's in the queue and what each disc is waiting on
 disc-cleanup                # retention prompts for shipped, verified discs
 disc-run --watch            # drain the queue until it's idle
 ```
+
+Each stage checks its own prerequisites and says which directory it looked in —
+`disc-identify` needs `.mkv` files, `disc-apply` needs a `plan.json`.
 
 ## Layout
 
