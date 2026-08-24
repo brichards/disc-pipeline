@@ -56,7 +56,7 @@ def main():
         data = manifest.new(slug, fingerprint, label, kind)
         manifest.save(data)
 
-    min_length = config.MIN_LENGTH_BD if kind == disc.BLURAY else config.MIN_LENGTH_DVD
+    min_length = config.MIN_TITLE_LENGTH
 
     notify.say(f"Scanning titles (minimum {min_length}s)...")
     info, raw = makemkv.scan(args.disc, min_length)
