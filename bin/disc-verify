@@ -114,8 +114,12 @@ def _verify(data, slug, name, titles, args):
         reason = f"{failures} title(s) will not decode cleanly"
         manifest.hold(data, reason, retryable=False, stage="rip")
         notify.alert("Rip verification failed", f"{name}: {reason}")
-        notify.say("\nClean the disc and re-rip the affected title(s):")
-        notify.say(f"  disc-rip --redo")
+        notify.say("\nClean the disc, reinsert it, and re-rip the affected "
+                   "title(s) with: disc-rip --redo")
+        # Same rule as a failed rip: the remedy needs the disc in your hands,
+        # so keeping it loaded only blocks the drive.
+        if not args.no_eject:
+            _eject_if_still_ours(data)
         return 1
 
     # The rip stays historically suspect; what changes is that it has now been

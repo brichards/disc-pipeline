@@ -231,8 +231,14 @@ Titles shorter than four minutes are skipped. **A failed title does not stop the
 disc** — the rest still rip, and re-running retries only what failed, because
 the disc being in the drive is the expensive part.
 
-The disc ejects only once it is known good. Read errors leave it in the drive
-for `disc-verify` to rule on; failed titles leave it in for a retry.
+The disc ejects as soon as there is nothing more the drive can do for it. A
+clean rip ejects immediately. Read errors leave it loaded only until
+`disc-verify` has ruled, then it goes either way. A hold ejects too, unless the
+cause is something you fix without touching the disc — no free space, share
+offline — in which case it stays loaded so you can just re-run.
+
+That matters for more than tidiness: when a drive wedges mid-rip, ejecting is
+itself the first thing to try.
 
 ### disc-verify
 

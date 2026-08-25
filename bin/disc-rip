@@ -80,7 +80,7 @@ def _run(args, discs):
     notify.say(f"Scanning titles (minimum {min_length}s)...")
     info, raw = makemkv.scan(args.disc, min_length)
     if not info.titles:
-        manifest.hold(data, "makemkvcon returned no titles")
+        _park(data, "makemkvcon returned no titles", mount, args)
         notify.alert("Rip held", f"{label}: no titles returned")
         return 1
 
@@ -100,7 +100,8 @@ def _run(args, discs):
             wanted = override["playlist"]
             picked = [t for t in candidates if t.source_file == wanted]
             if not picked:
-                manifest.hold(data, f"override names {wanted}, not on this disc")
+                _park(data, f"override names {wanted}, not on this disc",
+                      mount, args)
                 notify.alert("Rip held", f"{label}: override {wanted} not found")
                 return 1
             notify.say(f"Override: ripping {wanted} only")
@@ -110,7 +111,7 @@ def _run(args, discs):
                 f"{data['triage']['decoy_cluster_size']} near-identical "
                 f"feature-length titles; correct playlist unknown"
             )
-            manifest.hold(data, reason)
+            _park(data, reason, mount, args)
             notify.alert("Rip held", f"{label}: {reason}")
             notify.say("Resolve with: disc-resolve " + slug)
             return 1
@@ -143,10 +144,9 @@ def _run(args, discs):
             f"needs {notify.human_bytes(needed)}, "
             f"{notify.human_bytes(available)} free"
         )
-        manifest.hold(data, reason, retryable=True, stage="rip")
+        _park(data, reason, mount, args, retryable=True, stage="rip")
         notify.alert("Rip held", f"{label}: {reason}")
-        notify.say("Free some space and run disc-rip again -- "
-                   "the disc is still in the drive.")
+        notify.say("Free some space and run disc-rip again.")
         return 1
 
     if args.dry_run:
@@ -277,15 +277,28 @@ def _merge_titles(previous, candidates):
 
 
 def _eject(mount, args):
-    """Only on a clean run. A disc with failures or worked-around read errors
-    stays in the drive, because the next thing to try is cleaning it and going
-    again -- and that is easier with the disc where it is."""
     if args.no_eject or args.dry_run:
         return
     if disc.eject(mount):
         notify.say(f"Ejected {mount.name}")
     else:
         notify.say(f"Could not eject {mount.name}")
+
+
+def _park(data, reason, mount, args, retryable=False, stage=None):
+    """Hold the disc, and decide whether to spit it out.
+
+    A retryable hold -- no disk space, share offline -- is fixed without
+    touching the disc, so leaving it loaded means you just re-run. Anything
+    else needs you to handle the disc before retrying, so holding on to it only
+    blocks the drive. For a drive that has wedged, ejecting is itself the first
+    thing to try.
+    """
+    manifest.hold(data, reason, retryable=retryable, stage=stage)
+    if retryable:
+        notify.say("Disc left in the drive -- clear the problem and re-run.")
+    else:
+        _eject(mount, args)
 
 
 def _finish(data, label, kind, slug, fingerprint, raw_dir,
@@ -304,10 +317,10 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
         broken = [r["index"] for r in data["titles"]
                   if r.get("rip", {}).get("status") == "failed"]
         reason = f"{failed} title(s) failed: {', '.join(str(b) for b in broken)}"
-        manifest.hold(data, reason)
+        _park(data, reason, mount, args)
         notify.alert("Rip incomplete", f"{label}: {reason}")
-        notify.say("Re-run disc-rip to retry only the failed titles.")
-        notify.say("Disc left in the drive.")
+        notify.say("Clean the disc, reinsert it, and only the failed titles "
+                   "are retried.")
         return 1
 
     _record_in_ledger(data, label, kind, slug, fingerprint)
@@ -322,7 +335,7 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
             f"{label}: {len(warnings)} read problem(s) -- check the tail",
         )
         notify.say("Disc left in the drive pending disc-verify, which ejects "
-                   "it if the files decode cleanly.")
+                   "it either way once it has ruled.")
         return 0
 
     manifest.advance(data, manifest.RIPPED)
