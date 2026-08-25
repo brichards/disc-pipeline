@@ -66,7 +66,7 @@ def _rows():
     for path in sorted(config.ROOT.iterdir()):
         if not path.is_dir() or path.name.startswith("."):
             continue
-        row = _queue_row(path) or _loose_row(path)
+        row = _queue_row(path)
         if row:
             rows.append(row)
     return rows
@@ -121,36 +121,6 @@ def _queue_row(path):
         "command": command.format(t=path.name) if command else "",
         "needs_you": needs_you,
     }
-
-
-def _loose_row(path):
-    """A directory of named files rather than a queue entry -- no manifest."""
-    work = path / ".disc-pipeline"
-    if not (work / "plan.json").exists():
-        return None
-    try:
-        plan = planlib.load(work)
-    except SystemExit:
-        return None
-
-    kept = [i for i in plan.get("items", [])
-            if planlib.outcome(i)[0] in (planlib.FEATURE, planlib.EXTRA)]
-    done = sum(1 for i in kept if i.get("transcode", {}).get("status") == "done")
-    shipped = plan.get("_shipped")
-
-    if shipped:
-        state, detail, command = "shipped", f"at {shipped['destination']}", ""
-    elif kept and done == len(kept):
-        state, detail, command = "transcoded", f"{done} file(s)", f'disc-ship "{path}"'
-    elif done:
-        state, detail = "transcoding", f"{done}/{len(kept)} file(s)"
-        command = f'disc-transcode "{path}"'
-    else:
-        state, detail = "applied", f"{len(kept)} file(s) kept"
-        command = f'disc-transcode "{path}"'
-
-    return {"name": path.name, "state": state, "detail": detail,
-            "command": command, "needs_you": False}
 
 
 def _progress(path, data, state):

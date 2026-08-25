@@ -9,7 +9,7 @@ import json
 import os
 from pathlib import Path
 
-from . import config, notify
+from . import adopt as adoptlib, config, notify
 
 # What disc-identify proposed.
 FEATURE = "feature"
@@ -29,33 +29,30 @@ def resolve_target(value=None):
 
     With no argument the current directory is the target, so you can cd into a
     rip and run the stages bare. Returns (name, media_dir, work_dir, slug).
-    For a queue entry the media lives in raw/ and the working files sit beside
-    it. For a loose directory the media is the directory itself and the working
-    files go into a dotted subdirectory, which keeps them out of Plex's way.
+
+    Every target ends up in one shape: a manifest, the media in raw/, and
+    everything else beside it. A folder of loose .mkv files gets there by being
+    adopted, so there is no second kind of target to reason about.
     """
     candidate = Path.cwd() if value in (None, "") else Path(value).expanduser()
+    if not candidate.is_dir():
+        candidate = config.ROOT / str(value)
+    if not candidate.is_dir():
+        notify.fail(f"no queue entry or directory named {value!r}")
 
-    if candidate.is_dir():
-        # Running bare from the queue root is a likely slip and would otherwise
-        # produce a confusing "no .mkv files here".
-        try:
-            if candidate.resolve() == config.ROOT.resolve():
-                notify.fail(
-                    f"{candidate} is the queue root, not a rip -- "
-                    "name a disc, or cd into one"
-                )
-        except OSError:
-            pass
-        raw = candidate / "raw"
-        if raw.is_dir():
-            return candidate.name, raw, candidate, candidate.name
-        return candidate.name, candidate, candidate / ".disc-pipeline", None
+    try:
+        if candidate.resolve() == config.ROOT.resolve():
+            notify.fail(f"{candidate} is the queue root, not a rip -- "
+                        "name a disc, or cd into one")
+    except OSError:
+        pass
 
-    disc_dir = config.ROOT / str(value)
-    if disc_dir.is_dir():
-        return value, disc_dir / "raw", disc_dir, value
+    if not (candidate / "manifest.json").exists():
+        if not adoptlib.is_adoptable(candidate):
+            notify.fail(f"{candidate} has no manifest and no .mkv files")
+        adoptlib.adopt(candidate)
 
-    notify.fail(f"no queue entry or directory named {value!r}")
+    return candidate.name, candidate / "raw", candidate, candidate.name
 
 
 def path_for(work_dir):

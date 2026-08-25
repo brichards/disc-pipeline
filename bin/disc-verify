@@ -37,9 +37,6 @@ def main():
     args = parser.parse_args()
 
     name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
-    if not slug:
-        notify.fail("disc-verify works on queue entries, which record read errors")
-
     try:
         data = manifest.load(slug)
     except (OSError, ValueError) as exc:

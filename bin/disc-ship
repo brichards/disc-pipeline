@@ -128,8 +128,7 @@ def _ship(plan, work_dir, slug, name, source, destination, promotion, args):
 
     plan["_shipped"] = {"destination": str(destination), "at": manifest.now()}
     planlib.save(plan, work_dir)
-    if slug:
-        _record_shipped(slug, destination)
+    _record_shipped(slug, destination)
     notify.say(f"\nShipped to {destination}")
     notify.say("Retention decisions later, with: disc-cleanup")
     return 0
@@ -160,12 +159,7 @@ def _source(work_dir):
 
 
 def _library(plan, slug):
-    media_type = "movie"
-    if slug:
-        try:
-            media_type = manifest.load(slug).get("media_type", "movie")
-        except (OSError, ValueError):
-            pass
+    media_type = manifest.load(slug).get("media_type", "movie")
     return config.NAS_TV if media_type == "tv" else config.NAS_MOVIES
 
 
@@ -193,8 +187,6 @@ def _progress(line):
 
 
 def _hold(slug, reason, retryable=False, stage=None):
-    if not slug:
-        return
     try:
         manifest.hold(manifest.load(slug), reason, retryable=retryable,
                       stage=stage)

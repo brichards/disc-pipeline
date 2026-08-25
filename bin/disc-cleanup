@@ -73,7 +73,7 @@ def _candidates(target):
         if names and path.name not in names and str(path) not in names:
             continue
 
-        entry = _queue_entry(path) or _loose_entry(path)
+        entry = _queue_entry(path)
         if entry:
             out.append(entry)
     return out
@@ -97,23 +97,6 @@ def _queue_entry(path):
         "source": path / "raw",
         "transcoded": path / "transcoded",
         "destination": Path(shipped), "manifest": data,
-        "auto_applied": plan.get("auto_applied"),
-    }
-
-
-def _loose_entry(path):
-    work = path / ".disc-pipeline"
-    if not planlib.path_for(work).exists():
-        return None
-    plan = planlib.load(work)
-    shipped = plan.get("_shipped", {}).get("destination")
-    if not shipped:
-        return None
-    return {
-        "name": path.name, "slug": None, "root": work,
-        "source": path,
-        "transcoded": work / "transcoded",
-        "destination": Path(shipped), "manifest": None,
         "auto_applied": plan.get("auto_applied"),
     }
 
@@ -280,8 +263,6 @@ def _refuse(path):
 
 def _pipeline_made(resolved):
     """Whether this path sits in a directory the pipeline built."""
-    if ".disc-pipeline" in resolved.parts:
-        return True
     parent = resolved.parent
     return (parent / "manifest.json").exists() or (parent / "plan.json").exists()
 

@@ -67,6 +67,13 @@ def main():
         destination = transcode.output_for(source, out_dir)
         done = keeper["item"].get("transcode", {}).get("status") == "done"
 
+        if transcode.already_encoded(info) and not destination.exists():
+            landed = transcode.adopt_encoded(source, out_dir)
+            _mark(keeper["item"], "done", landed)
+            notify.say(f"  keep  {source.name}  "
+                       f"(already {transcode.TARGET_AUDIO}, linked not re-encoded)")
+            continue
+
         if destination.exists() and not args.force:
             notify.say(f"  have  {source.name}  ({destination.name} exists)")
             _mark(keeper["item"], "done", destination)
@@ -182,11 +189,7 @@ def _mark(item, status, destination, seconds=None, code=None):
 def _finish(plan, work_dir, slug, out_dir):
     planlib.save(plan, work_dir)
     notify.say(f"\nReady to ship from {out_dir}")
-    if slug:
-        try:
-            manifest.advance(manifest.load(slug), manifest.TRANSCODED)
-        except (OSError, ValueError):
-            pass
+    manifest.advance(manifest.load(slug), manifest.TRANSCODED)
     return 0
 
 
