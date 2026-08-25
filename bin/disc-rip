@@ -38,6 +38,11 @@ def main():
 
     discs = disc.find_discs()
     if not discs:
+        # The one "no disc" that still looks like a disc in Finder. Say so,
+        # or the drive appears loaded and the pipeline appears wrong.
+        for mount in disc.stale_mounts():
+            notify.say(f"{mount} is mounted but its media cannot be read.")
+            notify.say(f"  Clear it with: diskutil unmount {mount}")
         notify.fail("no Blu-ray or DVD found in /Volumes")
 
     # One drive, one reader. A watcher that fires while a rip is running must
