@@ -6,6 +6,7 @@ sets cwd to the destination rather than passing an output path -- and that
 refusal is what makes a re-run resumable: finished files are simply skipped.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,6 +20,41 @@ COMMON_ARGS = ["--add-subtitle", "all"]
 # The transcoders shell out to HandBrake; without it they fail per-file rather
 # than up front, which wastes the whole queue's turn.
 REQUIRED = ("HandBrakeCLI", "ffprobe")
+
+
+# Discs do not carry AAC. Blu-ray allows LPCM, Dolby Digital, DD+, DTS, DTS-HD
+# and TrueHD; DVD allows AC-3, DTS, PCM and MPEG audio. So a file whose audio is
+# entirely AAC did not come off a disc -- it came out of a transcoder, and
+# running it through another one would cost hours and a generation of quality
+# for no gain.
+TARGET_AUDIO = "aac"
+
+
+def already_encoded(info):
+    """Whether this file is already in the format transcoding would produce."""
+    audio = (info or {}).get("audio") or []
+    if not audio:
+        return False
+    return all((track.get("codec") or "").lower() == TARGET_AUDIO
+               for track in audio)
+
+
+def adopt_encoded(source, out_dir):
+    """Put an already-encoded file into the output without re-encoding.
+
+    A hard link costs nothing and no extra space; a copy is the fallback when
+    the two are on different filesystems.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    destination = output_for(source, out_dir)
+    if destination.exists():
+        return destination
+    try:
+        os.link(source, destination)
+    except OSError:
+        shutil.copy2(source, destination)
+    return destination
 
 
 def route(height):
