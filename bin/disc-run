@@ -27,7 +27,7 @@ BIN = Path(__file__).resolve().parent
 # state -> (stage to run, resource it monopolises)
 ACTIONS = {
     manifest.QUEUED: ("disc-rip", locks.DRIVE),
-    manifest.RIPPED: ("disc-identify", locks.AGENT),
+    manifest.RIPPED: ("disc-identify", locks.AGENT),  # unless unverified
     manifest.APPLIED: ("disc-transcode", locks.CPU),
     manifest.TRANSCODED: ("disc-ship", locks.NET),
 }
@@ -133,6 +133,11 @@ def _next_action(data):
     state = data.get("state")
     if state in GATES:
         return None, None
+
+    # A suspect rip is decode-checked before anything is spent identifying it.
+    rip = data.get("rip", {})
+    if state == manifest.RIPPED and rip.get("suspect") and not rip.get("verified"):
+        return "disc-verify", locks.CPU
     if state == manifest.HELD:
         if not data.get("held_retryable"):
             return None, None

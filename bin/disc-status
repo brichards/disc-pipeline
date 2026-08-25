@@ -99,9 +99,13 @@ def _queue_row(path):
 
     # A rip MakeMKV worked around still reports done. Saying so here is the
     # difference between noticing and finding out mid-rewatch.
-    if data.get("rip", {}).get("suspect"):
-        detail = f"{detail}  [SUSPECT: read errors]"
-        needs_you = True
+    rip = data.get("rip", {})
+    if rip.get("suspect"):
+        if rip.get("verified"):
+            detail = f"{detail}  [read errors, verified clean]"
+        else:
+            detail = f"{detail}  [SUSPECT: unverified read errors]"
+            needs_you = True
 
     return {
         "name": path.name,

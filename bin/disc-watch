@@ -125,7 +125,11 @@ def _start(slug, args, foreground):
     (config.ROOT / slug / "logs").mkdir(parents=True, exist_ok=True)
     log = config.ROOT / "watch.log"
 
-    steps = [[str(BIN / "disc-rip"), "--wait"]]
+    # disc-verify exits immediately on a rip with no read errors, so it can
+    # sit here unconditionally. It exits non-zero on a file that will not
+    # decode, and the && stops identification from being paid for.
+    steps = [[str(BIN / "disc-rip"), "--wait"],
+             [str(BIN / "disc-verify"), slug, "--wait"]]
     if not args.no_identify:
         steps.append([str(BIN / "disc-identify"), slug])
 
