@@ -256,6 +256,7 @@ file still there.
 ```sh
 disc-cleanup                 # every shipped disc
 disc-cleanup <slug>          # just one
+disc-cleanup --dry-run       # show what would go; delete nothing
 disc-cleanup --verify-only   # re-check the NAS copies, offer nothing
 ```
 
@@ -272,8 +273,25 @@ Two things are never offered. A source taller than 1080p is kept automatically,
 because re-ripping a UHD disc to recover a master is not a trade worth making
 twice. And a disc whose `keep_source` is `always` is skipped.
 
-Deletion refuses any path outside the queue root, and nothing is deleted without
-a yes, per disc and per folder.
+### Guards
+
+This is the only code in the project that removes anything, so the delete site
+re-establishes every precondition itself rather than trusting the caller that
+found the path.
+
+| Guard | Refuses |
+| --- | --- |
+| Inside the queue root | Any path outside `DISC_PIPELINE_ROOT` |
+| Not the root itself | The queue root, however it was reached |
+| Symlinks resolved first | A link inside the queue pointing out of it |
+| Provenance | A path with no `manifest.json`, `plan.json`, or `.disc-pipeline` beside it — if the pipeline did not make it, the pipeline does not remove it |
+| Shipped only | Anything that has not reached the NAS |
+| Freshly verified | Anything whose copy does not checksum-match *right now*, not at ship time |
+| Explicit consent | Anything you did not answer `y` to, per disc and per folder |
+| Masters | A source taller than 1080p, or a disc with `keep_source: always` |
+
+`--dry-run` walks the whole flow, reports what each disc would offer and the
+total reclaimable, and prompts for nothing.
 
 ## Design notes
 
