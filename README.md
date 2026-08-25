@@ -406,6 +406,13 @@ It re-proves the copy before offering anything, then asks separately about the
 transcoded output and the source files, because the case that comes up is
 discarding a bad transcode while keeping the source to retry.
 
+Once both are gone it offers the disc folder itself — the manifest, the plan,
+contact sheets, logs, and anything left in `rejected/`, which it names rather
+than sweeping up silently. Accept and the only remaining record of the disc is
+its ledger entry; the result lives in your library. Verification gates the media
+prompts only, since what is left afterward has no counterpart on the NAS to
+check against.
+
 This is the only code in the project that deletes anything, so the delete site
 re-establishes every precondition itself:
 
