@@ -99,6 +99,13 @@ def _queue_row(path):
 
     # A rip MakeMKV worked around still reports done. Saying so here is the
     # difference between noticing and finding out mid-rewatch.
+    if planlib.path_for(path).exists():
+        try:
+            if planlib.load(path).get("auto_applied"):
+                detail = f"{detail}  [auto-named, unreviewed]"
+        except SystemExit:
+            pass
+
     rip = data.get("rip", {})
     if rip.get("suspect"):
         if rip.get("verified"):

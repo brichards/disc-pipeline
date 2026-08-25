@@ -97,6 +97,7 @@ def _queue_entry(path):
         "source": path / "raw",
         "transcoded": path / "transcoded",
         "destination": Path(shipped), "manifest": data,
+        "auto_applied": plan.get("auto_applied"),
     }
 
 
@@ -113,6 +114,7 @@ def _loose_entry(path):
         "source": path,
         "transcoded": work / "transcoded",
         "destination": Path(shipped), "manifest": None,
+        "auto_applied": plan.get("auto_applied"),
     }
 
 
@@ -208,6 +210,13 @@ def _offer_source(entry, args):
         notify.say("    keep_source is 'always' for this disc. Not offered.")
         return 0
 
+    if entry.get("auto_applied"):
+        # Deleting the source is the point of no return for a naming mistake:
+        # after this, recovering a wrongly rejected extra means the disc goes
+        # back in the drive. Worth saying when nobody checked the names.
+        notify.say("    NOTE: this disc was named automatically and never")
+        notify.say("    reviewed. Deleting the source makes a naming mistake")
+        notify.say("    expensive to undo -- spot-check the library first.")
     notify.say("    Keep these if the transcode might need redoing -- an")
     notify.say("    interlaced cartoon, a botched crop. Recovering them")
     notify.say("    otherwise means the disc goes back in the drive.")

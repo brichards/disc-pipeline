@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import manifest, notify, plan as planlib
+from discpipe import config, manifest, notify, plan as planlib
 
 MARK = {
     planlib.FEATURE: "*",
@@ -32,6 +32,8 @@ def main():
                         help="queue slug or directory; defaults to the current directory")
     parser.add_argument("--yes", action="store_true",
                         help="accept every proposal without review")
+    parser.add_argument("--auto", action="store_true",
+                        help="accept only if every item is high confidence")
     parser.add_argument("--reset", action="store_true",
                         help="put the files back and review again")
     parser.add_argument("--revert", action="store_true",
@@ -47,6 +49,19 @@ def main():
         notify.fail("the plan has no items")
 
     _suspect_warning(slug)
+
+    if args.auto:
+        blockers = _auto_blockers(items)
+        if blockers:
+            notify.say(f"\n{name}: not eligible for automatic naming.")
+            for blocker in blockers[:8]:
+                notify.say(f"  {blocker}")
+            notify.say("Review it: disc-apply " + (slug or str(work_dir.parent)))
+            return 1
+        notify.say(f"\n{name}: every item high confidence -- applying "
+                   "without review.")
+        plan["auto_applied"] = manifest.now()
+        args.yes = True
 
     # A dry run reports; it does not record decisions or move files.
     persist = not args.dry_run
@@ -132,6 +147,23 @@ def _suspect_warning(slug):
         notify.say(f'  ffmpeg -v error -i "raw/{title["output_name"]}" -f null -')
     notify.say("Silence means it decodes cleanly.")
     notify.say("!" * 60)
+
+
+def _auto_blockers(items):
+    """Why this plan may not be applied unreviewed.
+
+    The bar is deliberately all-or-nothing: one uncertain item means the whole
+    disc gets looked at, because the items are judged together and a doubt about
+    one is a doubt about the reading of the disc.
+    """
+    blockers = []
+    for item in items:
+        confidence = item.get("confidence", "low")
+        if item.get("action") == planlib.UNKNOWN:
+            blockers.append(f"unidentified: {item['file']}")
+        elif confidence != "high":
+            blockers.append(f"{confidence} confidence: {item['file']}")
+    return blockers
 
 
 def _revert(plan, media_dir, work_dir, args):
