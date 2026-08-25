@@ -33,6 +33,8 @@ def main():
                         help="one disc; default is every shipped disc")
     parser.add_argument("--verify-only", action="store_true",
                         help="re-check the NAS copies, offer nothing")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="show what would be deleted and delete nothing")
     args = parser.parse_args()
 
     candidates = _candidates(args.target)
@@ -40,12 +42,17 @@ def main():
         notify.say("Nothing has shipped that is waiting on a retention decision.")
         return 0
 
+    if args.dry_run:
+        notify.say("\nDRY RUN -- nothing will be deleted.")
     notify.say(f"\n{len(candidates)} disc(s) shipped and awaiting a decision.")
     freed = 0
     for entry in candidates:
         freed += _consider(entry, args)
 
-    if freed:
+    if args.dry_run:
+        notify.say(f"\n{notify.human_bytes(freed)} could be reclaimed. "
+                   "Nothing was deleted.")
+    elif freed:
         notify.say(f"\nReclaimed {notify.human_bytes(freed)}.")
     notify.say(f"{notify.human_bytes(_free())} free on {config.ROOT}.")
     return 0
@@ -124,10 +131,10 @@ def _consider(entry, args):
         return 0
 
     freed = 0
-    freed += _offer_transcoded(entry)
-    freed += _offer_source(entry)
+    freed += _offer_transcoded(entry, args)
+    freed += _offer_source(entry, args)
 
-    if freed and entry["slug"]:
+    if freed and not args.dry_run and entry["slug"]:
         _finish(entry)
     return freed
 
@@ -159,7 +166,7 @@ def _reverify(entry):
     return ship.verify(source, entry["destination"])
 
 
-def _offer_transcoded(entry):
+def _offer_transcoded(entry, args):
     path = entry["transcoded"]
     if not path.exists():
         return 0
@@ -168,10 +175,13 @@ def _offer_transcoded(entry):
     notify.say(f"    {path}")
     notify.say("    This is what shipped. Deleting it is safe; keep it only if")
     notify.say("    you want to re-ship without re-transcoding.")
+    if args.dry_run:
+        notify.say("    would offer for deletion")
+        return size
     return _delete(path, size) if _ask("  Delete transcoded output?") else 0
 
 
-def _offer_source(entry):
+def _offer_source(entry, args):
     path = entry["source"]
     if not path.exists():
         return 0
@@ -194,6 +204,9 @@ def _offer_source(entry):
     notify.say("    Keep these if the transcode might need redoing -- an")
     notify.say("    interlaced cartoon, a botched crop. Recovering them")
     notify.say("    otherwise means the disc goes back in the drive.")
+    if args.dry_run:
+        notify.say("    would offer for deletion")
+        return size
     return _delete(path, size) if _ask("  Delete source files?") else 0
 
 
@@ -221,18 +234,48 @@ def _ask(question):
         return False
 
 
-def _delete(path, size):
-    """Delete, but only ever inside the queue root.
+def _refuse(path):
+    """Why this path must not be deleted, or None if it may be.
 
-    The one place in this project that removes anything, so it checks that the
-    path is where it is supposed to be rather than trusting the caller.
+    The only code in this project that removes anything, so it re-establishes
+    every precondition itself rather than trusting the caller that found it.
     """
     try:
         resolved = path.resolve()
-        resolved.relative_to(config.ROOT.resolve())
-    except (OSError, ValueError):
-        notify.say(f"    ! refusing: {path} is outside {config.ROOT}")
+    except OSError as exc:
+        return f"cannot resolve {path}: {exc}"
+
+    root = config.ROOT.resolve()
+    if resolved == root:
+        return f"{resolved} is the queue root itself"
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        # resolve() has already followed any symlink, so a link pointing out of
+        # the queue is caught here rather than followed into someone's library.
+        return f"{resolved} is outside {root}"
+
+    # Provenance: something the pipeline itself wrote has to be adjacent, or
+    # this is not a directory the pipeline created and has no business removing.
+    if not _pipeline_made(resolved):
+        return f"{resolved} has no disc-pipeline artifact beside it"
+    return None
+
+
+def _pipeline_made(resolved):
+    """Whether this path sits in a directory the pipeline built."""
+    if ".disc-pipeline" in resolved.parts:
+        return True
+    parent = resolved.parent
+    return (parent / "manifest.json").exists() or (parent / "plan.json").exists()
+
+
+def _delete(path, size):
+    refusal = _refuse(path)
+    if refusal:
+        notify.say(f"    ! refusing: {refusal}")
         return 0
+    resolved = path.resolve()
 
     try:
         if resolved.is_dir():
