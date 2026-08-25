@@ -98,11 +98,7 @@ def main():
 
     if error:
         notify.alert("Identify failed", f"{name}: {error}")
-        if slug:
-            try:
-                manifest.hold(manifest.load(slug), f"identify failed: {error}")
-            except (OSError, ValueError):
-                pass
+        manifest.hold(manifest.load(slug), f"identify failed: {error}")
         notify.fail(error)
 
     _write_plan(plan, name, media_dir, work_dir, slug, files=len(inventory))
@@ -131,12 +127,8 @@ def _write_plan(plan, name, media_dir, work_dir, slug, files):
     plan_file.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
     _report(plan)
     notify.say(f"\nPlan: {plan_file}")
-    notify.say(f"Review with: disc-apply {work_dir.parent if slug is None else slug}")
-    if slug:
-        try:
-            manifest.advance(manifest.load(slug), manifest.IDENTIFIED)
-        except (OSError, ValueError):
-            pass
+    notify.say(f"Review with: disc-apply {slug}")
+    manifest.advance(manifest.load(slug), manifest.IDENTIFIED)
     return plan_file
 
 

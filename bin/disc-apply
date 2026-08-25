@@ -112,11 +112,7 @@ def main():
         return 0
 
     notify.say(f"\nApplied {applied} change(s).")
-    if slug:
-        try:
-            manifest.advance(manifest.load(slug), manifest.APPLIED)
-        except (OSError, ValueError):
-            pass
+    manifest.advance(manifest.load(slug), manifest.APPLIED)
     return 0
 
 
@@ -124,13 +120,7 @@ def _suspect_warning(slug):
     """MakeMKV works around unreadable sectors and still exits clean, so a
     suspect rip reaches this gate looking exactly like a good one. Say it
     loudly here, because this is the last point before hours of transcoding."""
-    if not slug:
-        return
-    try:
-        data = manifest.load(slug)
-    except (OSError, ValueError):
-        return
-    rip = data.get("rip", {})
+    rip = manifest.load(slug).get("rip", {})
     if not rip.get("suspect"):
         return
     if rip.get("verified"):
