@@ -105,19 +105,30 @@ def _consider(entry, args):
     notify.say(f"\n{'=' * 60}\n{entry['name']}")
     notify.say(f"  shipped to  {entry['destination']}")
 
-    # Say this before starting, not after. Verification checksums both copies
-    # -- the local one and the whole thing back across the share -- so it runs
-    # for minutes on a feature, and silence for that long reads as a hang.
-    local = _size(entry["transcoded"]) if entry["transcoded"].exists() else 0
-    notify.say(f"  verifying {notify.human_bytes(local)} against the NAS "
-               "(reads both copies, takes a few minutes)...")
-
-    ok, detail = _reverify(entry)
-    if not ok:
-        notify.say(f"  ! NOT verified: {detail}")
-        notify.say("  Nothing offered for deletion. Re-ship before cleaning up.")
+    # Verification compares the transcoded copy against the library, so it only
+    # applies while that copy still exists. What is left after it has gone is
+    # metadata and rejected files -- neither has a counterpart on the NAS, so
+    # there is nothing to prove before removing them.
+    if entry["transcoded"].exists():
+        local = _size(entry["transcoded"])
+        notify.say(f"  verifying {notify.human_bytes(local)} against the NAS "
+                   "(reads both copies, takes a few minutes)...")
+        ok, detail = _reverify(entry)
+        if not ok:
+            notify.say(f"  ! NOT verified: {detail}")
+            notify.say("  Nothing offered for deletion. Re-ship before "
+                       "cleaning up.")
+            return 0
+        notify.say("  verified -- every file present on the NAS with "
+                   "matching content")
+    elif entry["source"].exists():
+        notify.say("  ! the transcoded copy is gone, so the copy on the NAS "
+                   "cannot be checked")
+        notify.say("  Source files not offered. Re-transcode and re-ship to "
+                   "clean up properly.")
         return 0
-    notify.say("  verified -- every file present on the NAS with matching content")
+    else:
+        notify.say("  media already removed; only the record is left")
 
     if args.verify_only:
         return 0
@@ -125,9 +136,7 @@ def _consider(entry, args):
     freed = 0
     freed += _offer_transcoded(entry, args)
     freed += _offer_source(entry, args)
-
-    if freed and not args.dry_run and entry["slug"]:
-        _finish(entry)
+    freed += _offer_remainder(entry, args)
     return freed
 
 
@@ -209,6 +218,55 @@ def _offer_source(entry, args):
     return _delete(path, size) if _ask("  Delete source files?") else 0
 
 
+def _offer_remainder(entry, args):
+    """The disc folder itself, once the media is gone.
+
+    What is left is the record of the work: the manifest, the plan and its
+    evidence, contact sheets, logs -- and anything still sitting in rejected/.
+    None of it is recoverable from the library, but none of it is needed there
+    either: the ledger keeps what the disc was and where it went, and the
+    library keeps the result.
+    """
+    root = entry["root"]
+    if entry["source"].exists() or entry["transcoded"].exists():
+        return 0
+    if not root.exists():
+        return 0
+
+    size = _size(root)
+    rejects = sorted((root / "rejected").glob("*")) if (root / "rejected").is_dir() else []
+
+    notify.say(f"\n  Everything else      {notify.human_bytes(size)}")
+    notify.say(f"    {root}")
+    if rejects:
+        # Files you decided against but may never have looked at. Worth naming
+        # rather than sweeping up silently.
+        notify.say(f"    Includes {len(rejects)} rejected file(s) "
+                   f"({notify.human_bytes(_size(root / 'rejected'))}):")
+        for one in rejects[:5]:
+            notify.say(f"      {one.name}")
+    notify.say("    The manifest, plan, contact sheets and logs. After this the")
+    notify.say("    only record of the disc is the ledger entry.")
+
+    if args.dry_run:
+        notify.say("    would offer for deletion")
+        return size
+    if not _ask("  Delete the disc folder?"):
+        return 0
+
+    # The ledger is written first, because it draws on the manifest that is
+    # about to be deleted. If the delete then fails, the state goes back --
+    # "done" must never describe a disc whose folder is still sitting there,
+    # or nothing will offer it again.
+    if entry["slug"]:
+        _finish(entry)
+    freed = _delete(root, size)
+    if not freed and entry["slug"] and root.exists():
+        manifest.advance(entry["manifest"], manifest.SHIPPED)
+        notify.say("    left as shipped, so it will be offered again")
+    return freed
+
+
 def _source_height(path):
     tallest = 0
     files = sorted(path.glob("*.mkv")) if path.is_dir() else []
@@ -262,7 +320,9 @@ def _refuse(path):
 
 
 def _pipeline_made(resolved):
-    """Whether this path sits in a directory the pipeline built."""
+    """Whether the pipeline built this path, or the directory holding it."""
+    if (resolved / "manifest.json").exists():
+        return True  # the disc folder itself
     parent = resolved.parent
     return (parent / "manifest.json").exists() or (parent / "plan.json").exists()
 
@@ -287,10 +347,12 @@ def _delete(path, size):
 
 
 def _finish(entry):
-    """Mark the disc done once nothing local is left to decide about."""
+    """Record the disc in the ledger before its folder goes.
+
+    The ledger is the only thing that survives cleanup, so it has to be written
+    while the manifest it draws from is still there.
+    """
     data = entry["manifest"]
-    if entry["source"].exists() or entry["transcoded"].exists():
-        return
     manifest.advance(data, manifest.DONE)
     fingerprint = data.get("fingerprint")
     record = manifest.ledger_find(fingerprint) or {}
