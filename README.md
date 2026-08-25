@@ -97,7 +97,7 @@ queue of discs sitting at the review gate.
 | `--uninstall` | Unload and delete the plist |
 | `--status` | Report whether the agent is loaded and the plist present |
 | `--once` | Run the check now, in the foreground, and wait for it to finish |
-| `--no-identify` | Rip only; skip the chained identification |
+| `--no-identify` | Rip and verify only; defer identification (see below) |
 
 ### What it does when it fires
 
@@ -137,9 +137,39 @@ time. launchd does not inherit one, and every stage shells out to `ffmpeg`,
 project or change your `PATH`** — the plist holds absolute paths and a snapshot
 of the environment, neither of which updates itself.
 
-**Identification costs money and runs serially.** Roughly $1.44 and four
-minutes per disc. Use `--no-identify` if you would rather rip a stack first and
-identify later.
+### Deferring identification
+
+Identification runs serially and costs roughly **$1.44 and four minutes per
+disc**, because it reads contact sheets and looks the release up. Ripping a
+stack of six is a fair bit of both, spent while you are not looking at the
+results anyway.
+
+`--no-identify` shortens the chain to rip and verify, leaving each disc at
+`ripped`:
+
+```sh
+disc-watch --no-identify
+```
+
+**It defers rather than skips.** A disc left at `ripped` is still the drainer's
+next job, so `disc-run` picks it up whenever you get to it — or name discs
+individually:
+
+```sh
+disc-identify casino-royale-f49b43
+```
+
+**The installed agent ignores this flag.** launchd invokes `disc-watch` with no
+arguments, so `--no-identify` only affects invocations you type. To make the
+agent defer identification for a whole session, add the flag to the plist's
+`ProgramArguments` and reload:
+
+```sh
+/usr/bin/plutil -insert ProgramArguments.1 -string --no-identify ~/Library/LaunchAgents/net.rzen.disc-pipeline.watch.plist
+```
+
+Then `launchctl unload` and `launchctl load` the plist. Re-running
+`disc-watch --install` rewrites it without the flag, which is how you undo it.
 
 ### Watching a session
 
