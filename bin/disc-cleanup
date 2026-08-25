@@ -120,6 +120,13 @@ def _consider(entry, args):
     notify.say(f"\n{'=' * 60}\n{entry['name']}")
     notify.say(f"  shipped to  {entry['destination']}")
 
+    # Say this before starting, not after. Verification checksums both copies
+    # -- the local one and the whole thing back across the share -- so it runs
+    # for minutes on a feature, and silence for that long reads as a hang.
+    local = _size(entry["transcoded"]) if entry["transcoded"].exists() else 0
+    notify.say(f"  verifying {notify.human_bytes(local)} against the NAS "
+               "(reads both copies, takes a few minutes)...")
+
     ok, detail = _reverify(entry)
     if not ok:
         notify.say(f"  ! NOT verified: {detail}")
