@@ -43,6 +43,15 @@ RETRY = {
 # Stages that stop and wait for a person. The drainer never advances past these.
 GATES = (manifest.SHIPPED, manifest.DONE)
 
+# Flags the drainer adds because nobody is watching. Run by hand these stages
+# should behave differently: disc-apply ought to ask before it acts, and the
+# transcoder's per-percent progress is worth seeing. Neither belongs in an
+# unattended run, where every line lands in the log every other disc shares.
+UNATTENDED = {
+    "disc-apply": ["--auto"],
+    "disc-transcode": ["--quiet"],
+}
+
 # Naming applies itself when the plan is unanimously high confidence.
 # disc-apply --auto refuses anything less and leaves the disc for review, so
 # this is a gate exactly when there is something worth looking at.
@@ -127,7 +136,7 @@ def _pass(running, args):
         stage, resource = _next_action(data)
         if not stage or resource in busy:
             continue
-        extra = [slug, "--auto"] if stage == "disc-apply" else [slug]
+        extra = [slug, *UNATTENDED.get(stage, ())]
         if _launch(running, slug, stage, resource, extra, args):
             busy.add(resource)
             started += 1
