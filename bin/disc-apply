@@ -33,7 +33,9 @@ def main():
     parser.add_argument("--yes", action="store_true",
                         help="accept every proposal without review")
     parser.add_argument("--reset", action="store_true",
-                        help="discard previous decisions and review again")
+                        help="put the files back and review again")
+    parser.add_argument("--revert", action="store_true",
+                        help="put the files back under their original names")
     parser.add_argument("--dry-run", action="store_true",
                         help="show what would happen, change nothing")
     args = parser.parse_args()
@@ -49,9 +51,17 @@ def main():
     # A dry run reports; it does not record decisions or move files.
     persist = not args.dry_run
 
-    if args.reset:
+    if args.revert or args.reset:
+        undone = _revert(plan, media_dir, work_dir, args)
+        if args.revert:
+            notify.say(f"\nPut back {undone} file(s).")
+            if persist:
+                planlib.save(plan, work_dir)
+            return 0
         for item in items:
             item.pop("decision", None)
+            item.pop("applied", None)
+        plan.pop("auto_applied", None)
         if persist:
             planlib.save(plan, work_dir)
 
@@ -74,6 +84,8 @@ def main():
         return 0
 
     applied = _execute(moves, rejects, args.dry_run)
+    if persist:
+        planlib.save(plan, work_dir)
     if args.dry_run:
         notify.say(f"\nDry run -- {applied} change(s) not made.")
         return 0
@@ -120,6 +132,57 @@ def _suspect_warning(slug):
         notify.say(f'  ffmpeg -v error -i "raw/{title["output_name"]}" -f null -')
     notify.say("Silence means it decodes cleanly.")
     notify.say("!" * 60)
+
+
+def _revert(plan, media_dir, work_dir, args):
+    """Put every file back where the rip left it.
+
+    Without this, --reset is a trap: it clears the decisions but leaves the
+    files renamed, so the next run looks for names that no longer exist and
+    refuses everything. Reverting is also the only way to recover a wrongly
+    rejected extra without putting the disc back in the drive.
+    """
+    reject_dir = work_dir / "rejected"
+    moves = []
+    for item in plan.get("items", []):
+        original = media_dir / item["file"]
+        if original.exists():
+            continue
+        applied = item.get("applied")
+        candidates = [reject_dir / item["file"]]
+        if applied:
+            candidates.insert(0, media_dir / applied)
+        elif item.get("new_name"):
+            candidates.insert(0, media_dir / item["new_name"])
+        for candidate in candidates:
+            if candidate.exists():
+                moves.append((candidate, original, item))
+                break
+
+    if not moves:
+        notify.say("Nothing to put back.")
+        return 0
+
+    for source, target, _ in moves:
+        notify.say(f"  back    {source.name}")
+        notify.say(f"       -> {target.name}")
+    if args.dry_run:
+        return len(moves)
+
+    done = 0
+    for source, target, item in moves:
+        if target.exists():
+            notify.say(f"  ! {target.name} already exists, skipping")
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(target))
+        except OSError as exc:
+            notify.say(f"  ! could not move {source.name}: {exc}")
+            continue
+        item.pop("applied", None)
+        done += 1
+    return done
 
 
 def _summary(plan, name):
@@ -293,14 +356,16 @@ def _preflight(moves, rejects):
 
 def _execute(moves, rejects, dry_run):
     count = 0
-    for source, target, _ in moves:
+    for source, target, item in moves:
         if not dry_run:
             source.rename(target)
+            item["applied"] = target.name
         count += 1
-    for source, target, _ in rejects:
+    for source, target, item in rejects:
         if not dry_run:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(target))
+            item["applied"] = None
         count += 1
     return count
 
