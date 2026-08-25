@@ -6,9 +6,12 @@ Seven stages. Five run unattended; two stop and ask. The pipeline only runs on
 the days you're actually ripping — there is no resident daemon.
 
 ```
-disc-watch → disc-rip → disc-identify → [you] → disc-transcode → disc-ship → [you]
-                                      disc-apply                          disc-cleanup
+disc-watch → disc-rip → disc-verify → disc-identify → [you] → disc-transcode → disc-ship → [you]
+                                                    disc-apply                          disc-cleanup
 ```
+
+`disc-run` decides which of those can run and starts it; `disc-run --watch`
+keeps doing that until only the gates are left.
 
 ## Requirements
 
@@ -24,6 +27,7 @@ subprocesses.
 | `transcode-video.rb` | `disc-transcode` | 1080p and below |
 | `hevc-transcode.rb` | `disc-transcode` | Above 1080p |
 | `rsync` | `disc-ship` | Ships to the NAS and verifies the copy |
+| ffmpeg | `disc-verify` | Decodes a suspect rip to prove it is intact |
 | Claude Code CLI | `disc-identify` | Runs headless to name the ripped titles |
 | HandBrakeCLI | `disc-transcode` | Called by the transcode scripts |
 
@@ -213,8 +217,15 @@ out of Plex's way.
 are explicit and per-folder.
 
 **Exit code zero is not success.** MakeMKV works around bad reads and exits
-clean, so `disc-rip` scans its output for corruption messages and flags the disc
-regardless of exit status.
+clean, so `disc-rip` scans its output for corruption messages and flags the rip
+suspect regardless of exit status.
+
+**A suspect rip gets proved rather than guessed at.** `disc-verify` decodes
+every frame and discards the output — silence means the file is fine. It runs
+*before* identification, because identifying costs money and minutes and there
+is no sense paying that for a rip that turns out to be unusable. A 33 GB, 2:24
+feature takes about five minutes, which is cheap enough to do automatically. A
+clean rip skips it entirely, so it sits unconditionally in the chain.
 
 **A title index is a position, not an identity.** It depends on the minimum
 length used to enumerate, so every MakeMKV call has to agree on that value or
