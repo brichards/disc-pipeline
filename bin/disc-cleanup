@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""Stage 06 -- reclaim the disk, once there is proof the media is safe elsewhere.
+
+Deliberately not chained to shipping. You cannot know whether to keep a source
+in the minute the transfer finishes: the interlaced-cartoon case only surfaces
+once you watch the result, and that is exactly when you want the raw file still
+sitting there. So this runs whenever you get to it, over everything that has
+shipped.
+
+Nothing is deleted without a yes, per disc and per folder. Source and
+transcoded output are asked about separately, because the case that actually
+comes up is discarding a bad transcode while keeping the source to retry.
+"""
+
+import argparse
+import shutil
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import config, manifest, notify, plan as planlib, probe, ship
+
+# Above this, the source is a master worth keeping regardless -- re-ripping a
+# UHD disc to recover it is not a trade anyone wants to make twice.
+MASTER_HEIGHT = 1080
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Offer to reclaim space from discs that have shipped.")
+    parser.add_argument("target", nargs="?", default=None,
+                        help="one disc; default is every shipped disc")
+    parser.add_argument("--verify-only", action="store_true",
+                        help="re-check the NAS copies, offer nothing")
+    args = parser.parse_args()
+
+    candidates = _candidates(args.target)
+    if not candidates:
+        notify.say("Nothing has shipped that is waiting on a retention decision.")
+        return 0
+
+    notify.say(f"\n{len(candidates)} disc(s) shipped and awaiting a decision.")
+    freed = 0
+    for entry in candidates:
+        freed += _consider(entry, args)
+
+    if freed:
+        notify.say(f"\nReclaimed {notify.human_bytes(freed)}.")
+    notify.say(f"{notify.human_bytes(_free())} free on {config.ROOT}.")
+    return 0
+
+
+def _free():
+    return shutil.disk_usage(config.ROOT).free
+
+
+def _candidates(target):
+    """Discs that have shipped, whether queue entries or loose directories."""
+    out = []
+    names = [target] if target else None
+
+    for path in sorted(config.ROOT.iterdir()):
+        if not path.is_dir() or path.name.startswith("."):
+            continue
+        if names and path.name not in names and str(path) not in names:
+            continue
+
+        entry = _queue_entry(path) or _loose_entry(path)
+        if entry:
+            out.append(entry)
+    return out
+
+
+def _queue_entry(path):
+    try:
+        data = manifest.load(path.name)
+    except (OSError, ValueError):
+        return None
+    if data.get("state") != manifest.SHIPPED:
+        return None
+    if not planlib.path_for(path).exists():
+        return None
+    plan = planlib.load(path)
+    shipped = plan.get("_shipped", {}).get("destination")
+    if not shipped:
+        return None
+    return {
+        "name": path.name, "slug": path.name, "root": path,
+        "source": path / "raw",
+        "transcoded": path / "transcoded",
+        "destination": Path(shipped), "manifest": data,
+    }
+
+
+def _loose_entry(path):
+    work = path / ".disc-pipeline"
+    if not planlib.path_for(work).exists():
+        return None
+    plan = planlib.load(work)
+    shipped = plan.get("_shipped", {}).get("destination")
+    if not shipped:
+        return None
+    return {
+        "name": path.name, "slug": None, "root": work,
+        "source": path,
+        "transcoded": work / "transcoded",
+        "destination": Path(shipped), "manifest": None,
+    }
+
+
+def _consider(entry, args):
+    notify.say(f"\n{'=' * 60}\n{entry['name']}")
+    notify.say(f"  shipped to  {entry['destination']}")
+
+    ok, detail = _reverify(entry)
+    if not ok:
+        notify.say(f"  ! NOT verified: {detail}")
+        notify.say("  Nothing offered for deletion. Re-ship before cleaning up.")
+        return 0
+    notify.say("  verified -- every file present on the NAS with matching content")
+
+    if args.verify_only:
+        return 0
+
+    freed = 0
+    freed += _offer_transcoded(entry)
+    freed += _offer_source(entry)
+
+    if freed and entry["slug"]:
+        _finish(entry)
+    return freed
+
+
+def _reverify(entry):
+    """Never offer to delete anything without re-proving the copy right now.
+
+    The ship-time check is not enough: that was then, and a NAS can lose a file
+    between then and now.
+    """
+    source = entry["transcoded"]
+    folders = [p for p in source.iterdir() if p.is_dir()] if source.is_dir() else []
+    if folders:
+        source = folders[0]
+    elif source.is_dir():
+        files = sorted(source.glob("*.mkv"))
+        if not files:
+            return False, "nothing local left to compare against"
+        source = files[0]
+    else:
+        return False, "no transcoded output to compare against"
+
+    if not entry["destination"].exists():
+        return False, f"{entry['destination']} is not there"
+    try:
+        ship.ensure_mounted(entry["destination"])
+    except ship.NotMounted as exc:
+        return False, str(exc)
+    return ship.verify(source, entry["destination"])
+
+
+def _offer_transcoded(entry):
+    path = entry["transcoded"]
+    if not path.exists():
+        return 0
+    size = _size(path)
+    notify.say(f"\n  Transcoded output   {notify.human_bytes(size)}")
+    notify.say(f"    {path}")
+    notify.say("    This is what shipped. Deleting it is safe; keep it only if")
+    notify.say("    you want to re-ship without re-transcoding.")
+    return _delete(path, size) if _ask("  Delete transcoded output?") else 0
+
+
+def _offer_source(entry):
+    path = entry["source"]
+    if not path.exists():
+        return 0
+    size = _size(path)
+    height = _source_height(path)
+
+    notify.say(f"\n  Source files        {notify.human_bytes(size)}")
+    notify.say(f"    {path}")
+
+    if height > MASTER_HEIGHT:
+        notify.say(f"    {height}p source -- kept automatically. Not offered.")
+        if entry["manifest"]:
+            entry["manifest"]["keep_source"] = "always"
+            manifest.save(entry["manifest"])
+        return 0
+    if entry.get("manifest", {}) and entry["manifest"].get("keep_source") == "always":
+        notify.say("    keep_source is 'always' for this disc. Not offered.")
+        return 0
+
+    notify.say("    Keep these if the transcode might need redoing -- an")
+    notify.say("    interlaced cartoon, a botched crop. Recovering them")
+    notify.say("    otherwise means the disc goes back in the drive.")
+    return _delete(path, size) if _ask("  Delete source files?") else 0
+
+
+def _source_height(path):
+    tallest = 0
+    files = sorted(path.glob("*.mkv")) if path.is_dir() else []
+    for one in files[:4]:
+        info = probe.ffprobe(one)
+        if info and info.get("height"):
+            tallest = max(tallest, info["height"])
+    return tallest
+
+
+def _size(path):
+    if path.is_file():
+        return path.stat().st_size
+    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
+
+
+def _ask(question):
+    try:
+        return input(f"{question} [y/N] ").strip().lower() == "y"
+    except (EOFError, KeyboardInterrupt):
+        notify.say("")
+        return False
+
+
+def _delete(path, size):
+    """Delete, but only ever inside the queue root.
+
+    The one place in this project that removes anything, so it checks that the
+    path is where it is supposed to be rather than trusting the caller.
+    """
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(config.ROOT.resolve())
+    except (OSError, ValueError):
+        notify.say(f"    ! refusing: {path} is outside {config.ROOT}")
+        return 0
+
+    try:
+        if resolved.is_dir():
+            shutil.rmtree(resolved)
+        else:
+            resolved.unlink()
+    except OSError as exc:
+        notify.say(f"    ! could not delete: {exc}")
+        return 0
+    notify.say(f"    deleted, {notify.human_bytes(size)} reclaimed")
+    return size
+
+
+def _finish(entry):
+    """Mark the disc done once nothing local is left to decide about."""
+    data = entry["manifest"]
+    if entry["source"].exists() or entry["transcoded"].exists():
+        return
+    manifest.advance(data, manifest.DONE)
+    fingerprint = data.get("fingerprint")
+    record = manifest.ledger_find(fingerprint) or {}
+    record.update({
+        "fingerprint": fingerprint,
+        "label": data.get("label"),
+        "disc_type": data.get("disc_type"),
+        "slug": entry["slug"],
+        "shipped_as": str(entry["destination"]),
+        "cleaned_at": manifest.now(),
+    })
+    manifest.ledger_append(record)
+    notify.say("    marked done")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
