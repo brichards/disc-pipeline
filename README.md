@@ -2,8 +2,10 @@
 
 Takes a Blu-ray or DVD from insertion to a named, transcoded file on the NAS.
 
-Seven stages. Five run unattended; two stop and ask. The pipeline only runs on
-the days you're actually ripping — there is no resident daemon.
+Eight stages. It runs unattended and stops for you twice: once to decide what
+to keep locally, and once more only if the naming came back uncertain. The
+pipeline only runs on the days you're actually ripping — there is no resident
+daemon.
 
 ```
 disc-watch → disc-rip → disc-verify → disc-identify → [you] → disc-transcode → disc-ship → [you]
@@ -245,17 +247,18 @@ out of Plex's way.
 | `DISC_PIPELINE_ROOT` | `~/Movies/Rips` | Queue root |
 | `DISC_PIPELINE_NAS` | `/Volumes/Media` | Library root, holding `Movies/` and `TV Shows/` |
 
-## Naming without review
+## Naming
 
-`disc-apply` is normally the gate. Set `DISC_PIPELINE_AUTO_APPLY=1` and the
-drainer will apply a plan on its own — but only one where **every item came back
-high confidence and nothing was left unidentified**. A single uncertain item
-sends the whole disc to review, because the items are judged together and a
+The drainer applies a naming plan on its own when **every item came back high
+confidence and nothing was left unidentified**. A single uncertain item sends
+the whole disc to review instead, because the items are judged together and a
 doubt about one is a doubt about the reading of the disc.
 
+So the review gate is a gate exactly when there is something worth looking at.
+
 ```sh
-DISC_PIPELINE_AUTO_APPLY=1 disc-run --watch
-disc-apply <slug> --auto        # the same bar, by hand
+disc-apply <slug>               # review it yourself, whenever you like
+disc-apply <slug> --auto        # the drainer's bar, by hand
 ```
 
 The asymmetry to keep in mind: a wrong **rename** is visible in the library and
