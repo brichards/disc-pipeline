@@ -97,6 +97,12 @@ def _queue_row(path):
     else:
         detail = _progress(path, data, state) or detail
 
+    # A rip MakeMKV worked around still reports done. Saying so here is the
+    # difference between noticing and finding out mid-rewatch.
+    if data.get("rip", {}).get("suspect"):
+        detail = f"{detail}  [SUSPECT: read errors]"
+        needs_you = True
+
     return {
         "name": path.name,
         "state": state,

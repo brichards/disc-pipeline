@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""The drainer -- decides what happens next, and starts it.
+
+Stages do not call each other. Each does its one job and advances state in the
+manifest; this reads that state and launches whatever can run. A chain is only
+as durable as its process tree, holds one process open for hours, and needs
+lock logic in every script the moment two discs are ready at once.
+
+Not a daemon either. `disc-run` makes one pass and exits. `disc-run --watch`
+polls until the queue has nothing left it can advance, then stops -- so it
+lives for a ripping session rather than sitting resident all year.
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import config, disc, locks, manifest, notify
+
+BIN = Path(__file__).resolve().parent
+
+# state -> (stage to run, resource it monopolises)
+ACTIONS = {
+    manifest.QUEUED: ("disc-rip", locks.DRIVE),
+    manifest.RIPPED: ("disc-identify", locks.AGENT),
+    manifest.APPLIED: ("disc-transcode", locks.CPU),
+    manifest.TRANSCODED: ("disc-ship", locks.NET),
+}
+
+# A retryable hold goes back to the stage that recorded it.
+RETRY = {
+    "rip": ("disc-rip", locks.DRIVE),
+    "identify": ("disc-identify", locks.AGENT),
+    "transcode": ("disc-transcode", locks.CPU),
+    "ship": ("disc-ship", locks.NET),
+}
+
+# Stages that stop and wait for a person. The drainer never advances past these.
+GATES = (manifest.IDENTIFIED, manifest.SHIPPED, manifest.DONE)
+
+IDLE_GRACE = 120  # seconds with nothing to do before a session gives up
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Advance the queue.")
+    parser.add_argument("--watch", action="store_true",
+                        help="keep polling until nothing is left to advance")
+    parser.add_argument("--interval", type=int, default=config.POLL_INTERVAL,
+                        help="seconds between passes in watch mode")
+    parser.add_argument("--grace", type=int, default=IDLE_GRACE,
+                        help="seconds idle before a watch session exits")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="report what would start, start nothing")
+    args = parser.parse_args()
+
+    try:
+        with locks.hold(locks.SESSION):
+            return _session(args)
+    except locks.Busy:
+        notify.say("A session is already running.")
+        return 0
+
+
+def _session(args):
+    running = {}  # slug -> (stage, resource, Popen)
+    keep_awake = None
+    idle_since = None
+
+    if args.watch and not args.dry_run:
+        keep_awake = _caffeinate()
+        notify.say(f"Session started; polling every {args.interval}s.")
+
+    try:
+        while True:
+            _reap(running)
+            started = _pass(running, args)
+            if not args.watch:
+                return 0
+
+            if running or started:
+                idle_since = None
+            else:
+                idle_since = idle_since or time.time()
+                if time.time() - idle_since >= args.grace:
+                    notify.say("Nothing left to advance. Session ending.")
+                    return 0
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        notify.say("\nStopped. Anything already running keeps going.")
+        return 0
+    finally:
+        if keep_awake:
+            keep_awake.terminate()
+
+
+def _pass(running, args):
+    """One sweep of the queue. Returns how many stages were started."""
+    busy = {resource for _, resource, _ in running.values()}
+    # Anything held by a stage this session did not start -- a hand-run rip,
+    # or one disc-watch kicked off -- is busy too.
+    busy |= {r for r in (locks.DRIVE, locks.CPU, locks.NET, locks.AGENT)
+             if r not in busy and not locks.is_free(r)}
+    started = 0
+
+    # A disc in the drive that nothing knows about yet. This is what makes
+    # disc-watch a convenience rather than a requirement -- a missed mount
+    # event costs a poll interval, not the disc.
+    if locks.DRIVE not in busy and _unqueued_disc():
+        if _launch(running, "*drive*", "disc-watch", locks.DRIVE, [], args):
+            busy.add(locks.DRIVE)
+            started += 1
+
+    for data in manifest.all_discs():
+        slug = data.get("slug")
+        if not slug or slug in running:
+            continue
+        stage, resource = _next_action(data)
+        if not stage or resource in busy:
+            continue
+        if _launch(running, slug, stage, resource, [slug], args):
+            busy.add(resource)
+            started += 1
+    return started
+
+
+def _next_action(data):
+    """What this disc needs, or (None, None) if it needs a person."""
+    state = data.get("state")
+    if state in GATES:
+        return None, None
+    if state == manifest.HELD:
+        if not data.get("held_retryable"):
+            return None, None
+        return RETRY.get(data.get("held_stage", "rip"), (None, None))
+    return ACTIONS.get(state, (None, None))
+
+
+def _launch(running, slug, stage, resource, extra, args):
+    label = slug if slug != "*drive*" else "new disc"
+    if args.dry_run:
+        notify.say(f"  would start  {stage:<15} {label}")
+        return True
+
+    notify.say(f"  starting  {stage:<15} {label}")
+    log = config.ROOT / "watch.log"
+    environment = dict(os.environ, DISC_LOG_PREFIX=f"[{slug}] ")
+    try:
+        with open(log, "a", encoding="utf-8") as handle:
+            process = subprocess.Popen(
+                [str(BIN / stage), *extra],
+                stdout=handle, stderr=handle, stdin=subprocess.DEVNULL,
+                start_new_session=True, env=environment,
+            )
+    except OSError as exc:
+        notify.say(f"  ! could not start {stage}: {exc}")
+        return False
+    running[slug] = (stage, resource, process)
+    return True
+
+
+def _reap(running):
+    for slug in [s for s, (_, _, p) in running.items() if p.poll() is not None]:
+        stage, _, process = running.pop(slug)
+        label = slug if slug != "*drive*" else "new disc"
+        if process.returncode != 0:
+            notify.say(f"  {stage} for {label} exited {process.returncode}")
+
+
+def _unqueued_disc():
+    """True when the drive holds a disc with no queue entry yet."""
+    for mount, kind in disc.find_discs():
+        try:
+            fingerprint = disc.fingerprint(mount, kind)
+        except (OSError, ValueError):
+            continue
+        if manifest.ledger_find(fingerprint):
+            continue
+        slug = disc.slugify(mount.name, fingerprint)
+        if not (config.ROOT / slug / "manifest.json").exists():
+            return True
+    return False
+
+
+def _caffeinate():
+    """Hold off idle sleep for exactly as long as this session lives."""
+    try:
+        return subprocess.Popen(
+            ["caffeinate", "-i", "-w", str(os.getpid())],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return None
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

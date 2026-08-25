@@ -56,7 +56,7 @@ def main():
     try:
         root = ship.ensure_mounted(destination)
     except ship.NotMounted as exc:
-        _hold(slug, str(exc), retryable=True)
+        _hold(slug, str(exc), retryable=True, stage="ship")
         notify.alert("Ship blocked", f"{name}: {exc}")
         notify.fail(str(exc))
     notify.say(f"  vol   {root} (mounted)")
@@ -192,11 +192,12 @@ def _progress(line):
         notify.say(f"        {line}")
 
 
-def _hold(slug, reason, retryable=False):
+def _hold(slug, reason, retryable=False, stage=None):
     if not slug:
         return
     try:
-        manifest.hold(manifest.load(slug), reason, retryable=retryable)
+        manifest.hold(manifest.load(slug), reason, retryable=retryable,
+                      stage=stage)
     except (OSError, ValueError):
         pass
 

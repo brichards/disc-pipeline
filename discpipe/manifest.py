@@ -90,7 +90,7 @@ def all_discs():
     return out
 
 
-def hold(data, reason, retryable=False):
+def hold(data, reason, retryable=False, stage=None):
     """Park a disc for attention.
 
     retryable marks a hold whose cause is external and may simply go away --
@@ -102,6 +102,8 @@ def hold(data, reason, retryable=False):
     data["state"] = HELD
     data["held_reason"] = reason
     data["held_retryable"] = bool(retryable)
+    if stage:
+        data["held_stage"] = stage
     save(data)
     return data
 
