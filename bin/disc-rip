@@ -321,7 +321,8 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
             "Rip finished with warnings",
             f"{label}: {len(warnings)} read problem(s) -- check the tail",
         )
-        notify.say("Disc left in the drive -- try cleaning it and re-ripping.")
+        notify.say("Disc left in the drive pending disc-verify, which ejects "
+                   "it if the files decode cleanly.")
         return 0
 
     manifest.advance(data, manifest.RIPPED)
