@@ -39,7 +39,23 @@ def disc_type(mount):
 
 
 def find_discs():
-    """Every mounted volume that looks like video media."""
+    """Every mounted volume holding video media we can actually read."""
+    return [(mount, kind) for mount, kind in _marked() if _readable(mount, kind)]
+
+
+def stale_mounts():
+    """Volumes that look like a disc but whose media cannot be read.
+
+    Reported rather than skipped in silence: one of these looks exactly like a
+    loaded disc to anything checking for BDMV, so a caller finding no disc
+    while Finder shows one deserves to be told why. Clearing it takes a
+    diskutil unmount, which is the user's call to make, not ours.
+    """
+    return [mount for mount, kind in _marked() if not _readable(mount, kind)]
+
+
+def _marked():
+    """Mounted volumes carrying a Blu-ray or DVD marker file."""
     found = []
     if not VOLUMES.exists():
         return found
@@ -51,6 +67,24 @@ def find_discs():
         if kind:
             found.append((mount, kind))
     return found
+
+
+def _readable(mount, kind):
+    """Whether the volume's stream files can be listed.
+
+    macOS leaves the mount point behind when a disc is ejected out from under
+    it or the drive drops the media: the volume still appears under /Volumes
+    and its marker file still stats, but every read returns EIO. Listing one
+    stream file is the cheapest thing that separates loaded media from that
+    leftover, and it is the same access fingerprint() needs a moment later.
+    """
+    for pattern in _FINGERPRINT_GLOBS[kind]:
+        try:
+            for _ in mount.glob(pattern):
+                return True
+        except OSError:
+            return False
+    return False
 
 
 def fingerprint(mount, kind):
