@@ -245,6 +245,36 @@ out of Plex's way.
 | `DISC_PIPELINE_ROOT` | `~/Movies/Rips` | Queue root |
 | `DISC_PIPELINE_NAS` | `/Volumes/Media` | Library root, holding `Movies/` and `TV Shows/` |
 
+## Reclaiming space
+
+`disc-cleanup` runs whenever you get to it, over everything that has shipped —
+deliberately not chained to shipping, because you cannot know whether to keep a
+source in the minute the transfer finishes. The interlaced-cartoon case only
+surfaces once you watch the result, and that is exactly when you want the raw
+file still there.
+
+```sh
+disc-cleanup                 # every shipped disc
+disc-cleanup <slug>          # just one
+disc-cleanup --verify-only   # re-check the NAS copies, offer nothing
+```
+
+It re-proves the copy before offering anything. The check at ship time is not
+enough — that was then, and a NAS can lose a file in between. Only after a fresh
+checksum comparison does it ask, **separately, per folder**:
+
+- **Transcoded output** — what shipped. Safe to delete; keep it only to re-ship
+  without re-transcoding.
+- **Source files** — keep these if the transcode might need redoing. Recovering
+  them otherwise means the disc goes back in the drive.
+
+Two things are never offered. A source taller than 1080p is kept automatically,
+because re-ripping a UHD disc to recover a master is not a trade worth making
+twice. And a disc whose `keep_source` is `always` is skipped.
+
+Deletion refuses any path outside the queue root, and nothing is deleted without
+a yes, per disc and per folder.
+
 ## Design notes
 
 **Nothing is ever deleted.** Rejected titles are moved aside; retention prompts
