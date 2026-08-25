@@ -122,10 +122,14 @@ immediately. Run `disc-rip` by hand and nothing is lost. Compare that to a
 watcher buried mid-pipeline, where a silent failure looks like the pipeline
 working.
 
-**A disc is ejected only on a clean rip.** One with failed titles or
-worked-around read errors stays in the drive and says so, because the next thing
-to try is cleaning it and re-ripping — easier with the disc where it is. Pass
-`--no-eject` to `disc-rip` to keep a disc regardless.
+**A disc is ejected once it is known good.** A clean rip ejects immediately.
+One with read errors stays in the drive until `disc-verify` decodes it — if
+every affected title is intact, `disc-verify` ejects it; if not, it stays put,
+because the next thing to try is cleaning it and re-ripping. A disc with failed
+titles always stays. `--no-eject` on either stage overrides.
+
+Ejection is fingerprint-guarded: verification can finish long after the rip, so
+the drive is checked to still hold the same disc before anything is ejected.
 
 **The plist carries an explicit `PATH`**, captured from your shell at install
 time. launchd does not inherit one, and every stage shells out to `ffmpeg`,
