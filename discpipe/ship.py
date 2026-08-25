@@ -19,8 +19,14 @@ from pathlib import Path
 # on a finished file. rsync excludes the partial directory from the transfer
 # automatically.
 PARTIAL_DIR = ".disc-pipeline-partial"
-TRANSFER_ARGS = ["--recursive", "--times", f"--partial-dir={PARTIAL_DIR}",
-                 "--human-readable"]
+#
+# --size-only, because this share does not accept modification times at all:
+# files land carrying the time of the transfer, hours off the source. Left to
+# compare on size-and-time, rsync would resend every byte on every re-run.
+# Content is proved separately by the checksum pass below, so skipping on size
+# is safe here in a way it would not be on its own.
+TRANSFER_ARGS = ["--recursive", "--times", "--size-only",
+                 f"--partial-dir={PARTIAL_DIR}", "--human-readable"]
 VERIFY_ARGS = ["--recursive", "--times", "--checksum", "--dry-run",
                "--itemize-changes"]
 
@@ -131,11 +137,33 @@ def verify(source, destination):
     if result.returncode != 0:
         return False, (result.stderr or "rsync verify failed").strip()
 
-    outstanding = [
-        line for line in result.stdout.splitlines()
-        if line.strip() and not line.startswith(("sending", "sent ", "total "))
-        and not line.rstrip().endswith("./")
-    ]
+    outstanding = [line for line in result.stdout.splitlines()
+                   if _is_mismatch(line)]
     if outstanding:
         return False, "; ".join(outstanding[:5])
     return True, ""
+
+
+def _is_mismatch(line):
+    """Whether an --itemize-changes line means the content actually differs.
+
+    The flags are YXcstpoguax. A leading '.' means rsync would send no data --
+    the file is already there, byte for byte. What follows can still show a 't',
+    because SMB does not preserve modification times exactly, and that is not a
+    difference worth refusing to clean up over.
+
+    Only a transfer marker, or a checksum or size flag, means the copy is wrong.
+    """
+    line = line.rstrip()
+    if not line or line.startswith(("sending", "sent ", "total ")):
+        return False
+    if line.endswith("./"):
+        return False
+    if line.startswith(("*deleting", "cd", "hf")):
+        return True
+    if len(line) < 4:
+        return False
+    update, _, checksum, size = line[0], line[1], line[2], line[3]
+    if update in (">", "<"):
+        return True
+    return checksum == "c" or size == "s"
