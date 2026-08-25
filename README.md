@@ -245,6 +245,40 @@ out of Plex's way.
 | `DISC_PIPELINE_ROOT` | `~/Movies/Rips` | Queue root |
 | `DISC_PIPELINE_NAS` | `/Volumes/Media` | Library root, holding `Movies/` and `TV Shows/` |
 
+## Naming without review
+
+`disc-apply` is normally the gate. Set `DISC_PIPELINE_AUTO_APPLY=1` and the
+drainer will apply a plan on its own — but only one where **every item came back
+high confidence and nothing was left unidentified**. A single uncertain item
+sends the whole disc to review, because the items are judged together and a
+doubt about one is a doubt about the reading of the disc.
+
+```sh
+DISC_PIPELINE_AUTO_APPLY=1 disc-run --watch
+disc-apply <slug> --auto        # the same bar, by hand
+```
+
+The asymmetry to keep in mind: a wrong **rename** is visible in the library and
+fixed by renaming the file. A wrong **reject** is silent — an extra that simply
+never appears, with nothing to prompt you to look for it.
+
+So auto-named discs are marked `[auto-named, unreviewed]` in `disc-status`, and
+`disc-cleanup` says so before offering to delete their source. That deletion is
+the real point of no return: until then a mistake costs a rename, after it a
+re-rip.
+
+### Putting files back
+
+```sh
+disc-apply <slug> --revert      # restore the original filenames
+disc-apply <slug> --reset       # restore them, then review again
+```
+
+Worth knowing when this helps and when it does not. Before transcoding, revert
+is the cheap fix, and it is the only way to recover a wrongly rejected extra
+without putting the disc back in the drive. After transcoding, renaming the
+finished file is almost always quicker than rewinding and re-encoding.
+
 ## Reclaiming space
 
 `disc-cleanup` runs whenever you get to it, over everything that has shipped —
