@@ -44,6 +44,8 @@ def main():
     if not items:
         notify.fail("the plan has no items")
 
+    _suspect_warning(slug)
+
     # A dry run reports; it does not record decisions or move files.
     persist = not args.dry_run
 
@@ -83,6 +85,36 @@ def main():
         except (OSError, ValueError):
             pass
     return 0
+
+
+def _suspect_warning(slug):
+    """MakeMKV works around unreadable sectors and still exits clean, so a
+    suspect rip reaches this gate looking exactly like a good one. Say it
+    loudly here, because this is the last point before hours of transcoding."""
+    if not slug:
+        return
+    try:
+        data = manifest.load(slug)
+    except (OSError, ValueError):
+        return
+    if not data.get("rip", {}).get("suspect"):
+        return
+
+    affected = [t for t in data.get("titles", [])
+                if t.get("rip", {}).get("warnings")]
+    notify.say("\n" + "!" * 60)
+    notify.say("This rip had read errors that MakeMKV worked around.")
+    for title in affected:
+        notify.say(f"  title {title['index']}  {title['duration']}  "
+                   f"{title['output_name']}  "
+                   f"({len(title['rip']['warnings'])} error(s))")
+    notify.say("")
+    notify.say("Data was unreadable, so the file may glitch. Check before")
+    notify.say("committing hours of transcode:")
+    for title in affected:
+        notify.say(f'  ffmpeg -v error -i "raw/{title["output_name"]}" -f null -')
+    notify.say("Silence means it decodes cleanly.")
+    notify.say("!" * 60)
 
 
 def _summary(plan, name):
