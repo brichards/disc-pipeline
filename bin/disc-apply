@@ -97,7 +97,12 @@ def _suspect_warning(slug):
         data = manifest.load(slug)
     except (OSError, ValueError):
         return
-    if not data.get("rip", {}).get("suspect"):
+    rip = data.get("rip", {})
+    if not rip.get("suspect"):
+        return
+    if rip.get("verified"):
+        notify.say("\nNote: this rip had read errors, but every affected title "
+                   "was decode-checked and is clean.")
         return
 
     affected = [t for t in data.get("titles", [])

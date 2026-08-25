@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Stage 01b -- decode a suspect rip and find out whether it is actually broken.
+
+Only runs when disc-rip flagged read errors. A clean rip exits immediately, so
+this can sit unconditionally in the chain between ripping and identifying.
+
+It goes before identification deliberately: identifying costs real money and
+several minutes, and there is no sense paying that for a rip that turns out to
+be unusable.
+
+Exits non-zero when a file will not decode, which short-circuits whatever was
+chained after it.
+"""
+
+import argparse
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from discpipe import locks, manifest, notify, plan as planlib, probe, verify
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Decode-check a suspect rip.")
+    parser.add_argument("target", nargs="?", default=None,
+                        help="queue slug or directory; defaults to the current directory")
+    parser.add_argument("--all", action="store_true",
+                        help="check every title, not only the ones with read errors")
+    parser.add_argument("--force", action="store_true",
+                        help="re-check titles already verified")
+    parser.add_argument("--wait", action="store_true",
+                        help="block for the CPU lock instead of stepping aside")
+    args = parser.parse_args()
+
+    name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
+    if not slug:
+        notify.fail("disc-verify works on queue entries, which record read errors")
+
+    try:
+        data = manifest.load(slug)
+    except (OSError, ValueError) as exc:
+        notify.fail(f"cannot read the manifest: {exc}")
+
+    titles = _to_check(data, media_dir, args)
+    if not titles:
+        if data.get("rip", {}).get("suspect"):
+            notify.say(f"{name}: already verified.")
+        return 0
+
+    try:
+        with locks.hold(locks.CPU, blocking=args.wait):
+            return _verify(data, slug, name, titles, args)
+    except locks.Busy as exc:
+        notify.say(f"{exc} -- leaving this for the next pass.")
+        return 0
+
+
+def _to_check(data, media_dir, args):
+    out = []
+    for title in data.get("titles", []):
+        rip = title.get("rip", {})
+        if rip.get("status") != "done":
+            continue
+        if not args.all and not rip.get("warnings"):
+            continue
+        if not args.force and title.get("verify", {}).get("status"):
+            continue
+        path = media_dir / title.get("output_name", "")
+        if path.exists():
+            out.append((title, path))
+    return out
+
+
+def _verify(data, slug, name, titles, args):
+    notify.say(f"\n{name}: decode-checking {len(titles)} title(s)")
+    failures = 0
+
+    for title, path in titles:
+        info = probe.ffprobe(path)
+        offsets = verify.read_error_offsets(title.get("rip", {}).get("warnings"))
+        if offsets and info:
+            stamps = verify.approximate_times(offsets, info["size_bytes"],
+                                              info["seconds"])
+            window = f"{verify.hms(min(stamps))}-{verify.hms(max(stamps))}"
+            notify.say(f"  title {title['index']}  {path.name}")
+            notify.say(f"    {len(offsets)} unreadable region(s), roughly {window}")
+        else:
+            notify.say(f"  title {title['index']}  {path.name}")
+
+        started = time.time()
+        ok, errors = verify.decode(path)
+        elapsed = int(time.time() - started)
+
+        title["verify"] = {
+            "status": "clean" if ok else "errors",
+            "errors": errors[:20],
+            "error_count": len(errors),
+            "seconds": elapsed,
+            "at": manifest.now(),
+        }
+        manifest.save(data)
+
+        if ok:
+            notify.say(f"    decodes clean ({elapsed // 60}m{elapsed % 60:02d}s)")
+        else:
+            failures += 1
+            notify.say(f"    {len(errors)} decode error(s) in {elapsed // 60}m"
+                       f"{elapsed % 60:02d}s:")
+            for line in errors[:5]:
+                notify.say(f"      {line}")
+
+    if failures:
+        reason = f"{failures} title(s) will not decode cleanly"
+        manifest.hold(data, reason, retryable=False, stage="rip")
+        notify.alert("Rip verification failed", f"{name}: {reason}")
+        notify.say("\nClean the disc and re-rip the affected title(s):")
+        notify.say(f"  disc-rip --redo")
+        return 1
+
+    # The rip stays historically suspect; what changes is that it has now been
+    # checked. Downstream stages read this rather than the raw warning count.
+    data["rip"]["verified"] = True
+    manifest.save(data)
+    notify.say(f"\n{name}: verified -- every checked title decodes cleanly.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
