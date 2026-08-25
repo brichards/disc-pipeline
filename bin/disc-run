@@ -43,6 +43,10 @@ RETRY = {
 # Stages that stop and wait for a person. The drainer never advances past these.
 GATES = (manifest.IDENTIFIED, manifest.SHIPPED, manifest.DONE)
 
+# With automatic naming on, the review gate is only a gate for plans that are
+# not unanimously confident. disc-apply --auto refuses the rest.
+AUTO_APPLY_ACTION = ("disc-apply", locks.CPU)
+
 IDLE_GRACE = 120  # seconds with nothing to do before a session gives up
 
 
@@ -122,7 +126,8 @@ def _pass(running, args):
         stage, resource = _next_action(data)
         if not stage or resource in busy:
             continue
-        if _launch(running, slug, stage, resource, [slug], args):
+        extra = [slug, "--auto"] if stage == "disc-apply" else [slug]
+        if _launch(running, slug, stage, resource, extra, args):
             busy.add(resource)
             started += 1
     return started
@@ -131,6 +136,8 @@ def _pass(running, args):
 def _next_action(data):
     """What this disc needs, or (None, None) if it needs a person."""
     state = data.get("state")
+    if state == manifest.IDENTIFIED and config.AUTO_APPLY:
+        return AUTO_APPLY_ACTION
     if state in GATES:
         return None, None
 
