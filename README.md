@@ -1,368 +1,499 @@
 # disc-pipeline
 
-Takes a Blu-ray or DVD from insertion to a named, transcoded file on the NAS.
+A set of utility scripts to assist in ripping and transcoding physical media
+from DVD and Blu-ray discs.
 
-Eight stages. It runs unattended and stops for you twice: once to decide what
-to keep locally, and once more only if the naming came back uncertain. The
-pipeline only runs on the days you're actually ripping — there is no resident
-daemon.
+Put a disc in the drive and the pipeline rips it, works out what each title
+actually is, names everything to Plex's conventions, transcodes it, copies it to
+your library, and ejects the disc so you can feed the next one. It stops and
+asks you twice: once before deleting anything local, and once more only if the
+naming came back uncertain.
+
+It is not a daemon. Nothing runs on the days you are not ripping.
 
 ```
-disc-watch → disc-rip → disc-verify → disc-identify → [you] → disc-transcode → disc-ship → [you]
-                                                    disc-apply                          disc-cleanup
+disc-watch → disc-rip → disc-verify → disc-identify → disc-apply → disc-transcode → disc-ship → disc-cleanup
 ```
 
-`disc-run` decides which of those can run and starts it; `disc-run --watch`
-keeps doing that until only the gates are left.
+`disc-run` decides which of those can run next and starts it. `disc-status`
+shows where everything stands.
+
+## Why it exists
+
+Ripping a disc is the easy part. The work is everything after: a Blu-ray
+routinely presents dozens of titles, and telling a real featurette from a
+chapter of the main feature, a duplicate playlist, or a trailer for a different
+film takes actually looking at the video. Get it wrong and you end up with a
+library full of files named `Title-07.mkv`, or worse, a movie that plays with
+scenes out of order.
+
+These scripts automate the mechanical parts and hand the judgment call to an
+agent that reads title cards, checks runtimes against the disc's published
+feature list, and explains why it thinks each file is what it says it is. You
+review its reasoning rather than the files.
 
 ## Requirements
 
-Everything is Python standard library — no `pip`, no virtualenv, no
-dependencies to go missing between uses. External tools are called as
-subprocesses.
+Everything in this project is Python standard library — no `pip`, no
+virtualenv, no dependencies to go missing between uses. External tools are
+called as subprocesses.
 
-| Tool | Used by | Notes |
+| Tool | Needed by | Install |
 | --- | --- | --- |
-| Python 3.9+ | all | `/usr/local/bin/python3` via Homebrew |
-| MakeMKV | `disc-rip` | Needs a current beta key for Blu-ray |
-| ffmpeg / ffprobe | `disc-identify`, `disc-transcode` | Frame extraction and resolution routing |
-| `transcode-video.rb` | `disc-transcode` | 1080p and below |
-| `hevc-transcode.rb` | `disc-transcode` | Above 1080p |
-| `rsync` | `disc-ship` | Ships to the NAS and verifies the copy |
-| ffmpeg | `disc-verify` | Decodes a suspect rip to prove it is intact |
-| Claude Code CLI | `disc-identify` | Runs headless to name the ripped titles |
-| HandBrakeCLI | `disc-transcode` | Called by the transcode scripts |
+| Python 3.9+ | everything | `brew install python` |
+| [MakeMKV](https://www.makemkv.com) | `disc-rip` | `brew install --cask makemkv` |
+| [FFmpeg](https://ffmpeg.org) | `disc-identify`, `disc-verify`, `disc-transcode` | `brew install ffmpeg` |
+| [HandBrakeCLI](https://handbrake.fr) | `disc-transcode` | `brew install handbrake` |
+| [video_transcoding](https://github.com/lisamelton/video_transcoding) | `disc-transcode` | `gem install video_transcoding` |
+| [Claude Code](https://claude.com/claude-code) | `disc-identify` | `npm install -g @anthropic-ai/claude-code` |
+| rsync | `disc-ship` | ships with macOS |
+
+Two notes on those.
+
+**MakeMKV needs a key to read Blu-ray discs.** The beta key is free and posted
+on [the MakeMKV forum](https://forum.makemkv.com/forum/viewtopic.php?t=1053),
+but it expires every couple of months. DVDs work without one.
+
+**video_transcoding provides `transcode-video.rb` and `hevc-transcode.rb`**,
+Lisa Melton's tools for producing files much smaller than the source while
+staying hard to tell apart from it. `disc-transcode` calls whichever suits the
+source resolution. If you want different encoding settings, those are the files
+to configure rather than anything here.
 
 ## Install
 
-```sh
-git clone git@github.com:brichards/disc-pipeline.git ~/Sites/Scripts/disc-pipeline
-ln -s ~/Sites/Scripts/disc-pipeline/bin/* /usr/local/bin/
-```
-
-Or add `bin/` to your `PATH`. Every script has a shebang and is executable, so
-they run as `disc-rip`, not `python3 disc-rip.py`.
-
-## Usage
-
-Insert a disc and `disc-watch` starts a session automatically. Otherwise drive
-it by hand — every stage runs standalone.
-
-Stages that act on a rip take a queue slug or a directory, and **default to the
-current directory**, so the usual way to work is to cd into a rip:
+Clone anywhere and put `bin/` on your `PATH`:
 
 ```sh
-cd ~/Movies/Rips/taken-2-2012-a91c4f
-disc-identify               # propose names for the ripped titles
-disc-apply                  # review the proposal, then rename
-disc-transcode
-disc-ship
+git clone https://github.com/brichards/disc-pipeline.git
+echo 'export PATH="$PATH:/path/to/disc-pipeline/bin"' >> ~/.zshrc
 ```
 
-Or name the target explicitly from anywhere:
+Every script has a shebang and is executable, so they run as `disc-rip`, not
+`python3 disc-rip.py`.
 
-```sh
-disc-identify "~/Movies/Rips/Taken 2 (2012)"
-disc-apply taken-2-2012-a91c4f
-```
+Two paths are configurable, both by environment variable:
 
-The rest are not per-rip:
+| Variable | Default | What it is |
+| --- | --- | --- |
+| `DISC_PIPELINE_ROOT` | `~/Movies/Rips` | Working directory: one folder per disc |
+| `DISC_PIPELINE_NAS` | `/Volumes/Media` | Your library, containing `Movies/` and `TV Shows/` |
 
-```sh
-disc-rip                    # scan the drive, triage titles, rip, eject
-disc-status                 # where every disc stands and what it's waiting on
-disc-cleanup                # retention prompts for shipped, verified discs
-disc-run --watch            # drain the queue until it's idle
-```
+Nothing else is configurable, on purpose. Behavior is decided rather than
+switched.
 
-Each stage checks its own prerequisites and says which directory it looked in —
-`disc-identify` needs `.mkv` files, `disc-apply` needs a `plan.json`.
+## Getting started
 
-## Feeding discs unattended
-
-`disc-watch` is a LaunchAgent that notices a disc and starts work on it. Install
-it once:
+Install the watcher once:
 
 ```sh
 disc-watch --install
 ```
 
-Then feed discs one at a time. Each rips, gets identified, and ejects on its
-own, so you can insert the next without watching a terminal. You end up with a
-queue of discs sitting at the review gate.
-
-### Flags
-
-| Flag | What it does |
-| --- | --- |
-| `--install` | Write the plist to `~/Library/LaunchAgents` and load it |
-| `--uninstall` | Unload and delete the plist |
-| `--status` | Report whether the agent is loaded and the plist present |
-| `--once` | Run the check now, in the foreground, and wait for it to finish |
-| `--no-identify` | Rip and verify only; defer identification (see below) |
-
-### What it does when it fires
-
-1. Looks for `BDMV/index.bdmv` or `VIDEO_TS/VIDEO_TS.IFO` under `/Volumes`.
-2. Steps aside if a rip already holds the drive lock.
-3. Fingerprints the disc and checks the ledger. **A disc already ripped is
-   ejected, not re-ripped** — a duplicate in the stack costs seconds.
-4. Checks free space.
-5. Starts `disc-rip --wait` chained into `disc-identify`, detached, with output
-   to `<slug>/logs/watch.log`.
-
-### Behaviour worth knowing
-
-**It is event-driven, not a timer.** launchd only wakes it when `/Volumes`
-changes, so it costs nothing on the days you are not ripping. It also fires on
-every *eject*, which is why the drive-lock check comes early — that firing is a
-no-op.
-
-**Its failure mode is benign and self-announcing.** It is the first link in the
-chain, so if it stops working you insert a disc, nothing happens, and you notice
-immediately. Run `disc-rip` by hand and nothing is lost. Compare that to a
-watcher buried mid-pipeline, where a silent failure looks like the pipeline
-working.
-
-**A disc is ejected once it is known good.** A clean rip ejects immediately.
-One with read errors stays in the drive until `disc-verify` decodes it — if
-every affected title is intact, `disc-verify` ejects it; if not, it stays put,
-because the next thing to try is cleaning it and re-ripping. A disc with failed
-titles always stays. `--no-eject` on either stage overrides.
-
-Ejection is fingerprint-guarded: verification can finish long after the rip, so
-the drive is checked to still hold the same disc before anything is ejected.
-
-**The plist carries an explicit `PATH`**, captured from your shell at install
-time. launchd does not inherit one, and every stage shells out to `ffmpeg`,
-`rsync`, or the `claude` CLI. **Re-run `disc-watch --install` if you move the
-project or change your `PATH`** — the plist holds absolute paths and a snapshot
-of the environment, neither of which updates itself.
-
-### Deferring identification
-
-Identification runs serially and costs roughly **$1.44 and four minutes per
-disc**, because it reads contact sheets and looks the release up. Ripping a
-stack of six is a fair bit of both, spent while you are not looking at the
-results anyway.
-
-`--no-identify` shortens the chain to rip and verify, leaving each disc at
-`ripped`:
+Then insert a disc. It rips, verifies, identifies itself, and ejects. Start the
+drainer and the rest happens on its own:
 
 ```sh
-disc-watch --no-identify
+disc-run --watch
 ```
 
-**It defers rather than skips.** A disc left at `ripped` is still the drainer's
-next job, so `disc-run` picks it up whenever you get to it — or name discs
-individually:
-
-```sh
-disc-identify casino-royale-f49b43
-```
-
-**The installed agent ignores this flag.** launchd invokes `disc-watch` with no
-arguments, so `--no-identify` only affects invocations you type. To make the
-agent defer identification for a whole session, add the flag to the plist's
-`ProgramArguments` and reload:
-
-```sh
-/usr/bin/plutil -insert ProgramArguments.1 -string --no-identify ~/Library/LaunchAgents/net.rzen.disc-pipeline.watch.plist
-```
-
-Then `launchctl unload` and `launchctl load` the plist. Re-running
-`disc-watch --install` rewrites it without the flag, which is how you undo it.
-
-### Watching a session
-
-Everything a stage prints goes to **one log at the queue root**, tagged with
-the disc it belongs to, so a stack of discs is a single file to tail:
-
-```sh
-tail -f ~/Movies/Rips/watch.log
-```
-
-The tag matters because ripping is serialised on the drive lock but
-identification is not — one disc's identify can overlap the next disc's rip.
-
-That log answers *what is happening*. For *where does everything stand*, which
-is the question when several discs are queued behind two gates:
+Check on it whenever:
 
 ```sh
 disc-status
 ```
 
 ```
-/Users/brian/Movies/Rips    150.2 GB free
+/Users/you/Movies/Rips    150.2 GB free
 
- ! casino-royale-f49b43  held       needs 52.4 GB, 17.6 GB free  [re-run to retry]
-                         -> disc-rip
-   warm-bodies-a99d66    applied    3/12 transcoded
-                         -> disc-transcode warm-bodies-a99d66
+   casino-royale-f49b43  applied    4/10 transcoded
+                         -> disc-transcode casino-royale-f49b43
+ ! taken-2-2012-a91c4f   identified 20 file(s) proposed
+                         -> disc-apply taken-2-2012-a91c4f
 ```
 
-A `!` marks a disc waiting on you. `--json` gives the same thing
-machine-readably.
-
-### If nothing happens on insert
+A `!` marks a disc waiting on you. Everything a stage prints also goes to a
+single log, tagged with the disc it belongs to:
 
 ```sh
-disc-watch --status          # is it loaded?
-disc-watch --once            # run the same check in the foreground
 tail -f ~/Movies/Rips/watch.log
 ```
 
-The agent's own output goes to `watch.log` at the queue root; each disc's rip
-and identify output goes to `<slug>/logs/watch.log`.
+You can also skip the automation entirely and run each stage by hand. They all
+work standalone.
 
-## Layout
+## How a disc moves through
 
-State lives on disk, one directory per disc, so any stage can be resumed or
-re-run.
+Each stage does one job and records where the disc got to. Nothing calls
+anything else — `disc-run` reads that state and starts whatever can run next,
+which is what makes the whole thing resumable. Kill it mid-transcode, start it
+again, and it picks up at the next file.
+
+Stages that act on a disc take a **queue slug or a directory**, and default to
+the current directory. So the usual way to work by hand is to change into a
+disc's folder and run bare commands.
+
+| Stage | What it does | Stops for you? |
+| --- | --- | --- |
+| `disc-watch` | Notices a disc and starts work on it | |
+| `disc-rip` | Triages titles, rips them, ejects the disc | |
+| `disc-verify` | Decodes a rip that reported read errors | |
+| `disc-identify` | Works out what each file is, proposes names | |
+| `disc-apply` | Applies the names | only if uncertain |
+| `disc-transcode` | Encodes what survived review | |
+| `disc-ship` | Copies to the library and proves it arrived | |
+| `disc-cleanup` | Offers to reclaim local space | yes |
+
+### Where files live
+
+One folder per disc, everything visible:
 
 ```
 ~/Movies/Rips/
-├── ledger.jsonl              # every disc ever seen, keyed by fingerprint
-├── overrides.json            # hard-won answers: fingerprint → correct playlist
-└── <disc-slug>/
-    ├── manifest.json         # disc info, title triage, stage status
+├── ledger.jsonl              # every disc ever seen
+├── overrides.json            # answers for discs that fought back
+├── watch.log
+└── casino-royale-f49b43/
+    ├── manifest.json         # where this disc stands
     ├── plan.json             # proposed names, evidence, your decisions
-    ├── raw/                  # MakeMKV output, untouched
-    ├── frames/               # title cards pulled during identification
-    ├── rejected/             # demoted titles — moved, never deleted
-    ├── transcoded/           # shaped exactly as it ships to the NAS
+    ├── raw/                  # what MakeMKV produced
+    ├── frames/               # contact sheets used to identify the titles
+    ├── rejected/             # demoted files — moved, never deleted
+    ├── transcoded/           # shaped exactly as it ships
     └── logs/
 ```
 
 `manifest.json` is the single source of truth for stage state. The ledger holds
-identity and disposition only, so it can outlive the queue directory after
-cleanup.
+identity and disposition only, so it outlives the folder after cleanup.
 
-Run against a loose directory of `.mkv` files rather than a queue entry and the
-working files go into a `.disc-pipeline/` subdirectory instead, which keeps them
-out of Plex's way.
+Already have a folder of files ripped by hand? Point any stage at it and it
+becomes a disc folder — it gains a manifest, its media moves into `raw/`, and it
+keeps its own name. The drainer picks it up from there. Adoption only happens
+when you point a command at a folder, never on its own, so a directory you are
+still copying into stays untouched.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `DISC_PIPELINE_ROOT` | `~/Movies/Rips` | Queue root |
-| `DISC_PIPELINE_NAS` | `/Volumes/Media` | Library root, holding `Movies/` and `TV Shows/` |
+---
 
-## Naming
+## Commands
 
-The drainer applies a naming plan on its own when **every item came back high
-confidence and nothing was left unidentified**. A single uncertain item sends
-the whole disc to review instead, because the items are judged together and a
-doubt about one is a doubt about the reading of the disc.
+### disc-watch
 
-So the review gate is a gate exactly when there is something worth looking at.
+Notices a disc and starts work on it. A LaunchAgent that macOS wakes only when
+`/Volumes` changes, so it costs nothing on the days you are not ripping.
 
 ```sh
-disc-apply <slug>               # review it yourself, whenever you like
-disc-apply <slug> --auto        # the drainer's bar, by hand
+disc-watch --install      # set it up once
+disc-watch --status       # is it loaded?
+disc-watch                # run the same check by hand
 ```
 
-The asymmetry to keep in mind: a wrong **rename** is visible in the library and
-fixed by renaming the file. A wrong **reject** is silent — an extra that simply
-never appears, with nothing to prompt you to look for it.
+| Flag | Effect |
+| --- | --- |
+| `--install` | Write the LaunchAgent and load it |
+| `--uninstall` | Unload and delete it |
+| `--status` | Report whether it is loaded |
+| `--once` | Run the check in the foreground and wait for it to finish |
+| `--no-identify` | Rip and verify only; leave naming for later |
 
-So auto-named discs are marked `[auto-named, unreviewed]` in `disc-status`, and
-`disc-cleanup` says so before offering to delete their source. That deletion is
-the real point of no return: until then a mistake costs a rename, after it a
-re-rip.
+On a disc it fingerprints, checks whether it has been ripped before, checks free
+space, then starts ripping in the background. **A disc already in the ledger is
+ejected rather than ripped again**, so a duplicate in the stack costs seconds.
 
-### Putting files back
+The LaunchAgent captures your `PATH` at install time and stores absolute paths,
+so **re-run `--install` if you move the project or change your `PATH`**.
+
+Identification costs money and time — roughly $1.44 and four minutes per disc.
+`--no-identify` defers it rather than skipping it; the disc waits at `ripped`
+and the drainer picks it up later. Note the installed agent ignores this flag,
+since macOS invokes the script with no arguments. To defer for a whole session,
+add the flag to the LaunchAgent's `ProgramArguments` and reload it.
+
+### disc-rip
+
+Scans the disc, decides which titles are worth keeping, rips them, and ejects.
 
 ```sh
-disc-apply <slug> --revert      # restore the original filenames
-disc-apply <slug> --reset       # restore them, then review again
+disc-rip                  # rip whatever is in the drive
+disc-rip --dry-run        # scan and triage only
+disc-rip --redo           # retry titles that failed
 ```
 
-Worth knowing when this helps and when it does not. Before transcoding, revert
-is the cheap fix, and it is the only way to recover a wrongly rejected extra
-without putting the disc back in the drive. After transcoding, renaming the
-finished file is almost always quicker than rewinding and re-encoding.
+| Flag | Effect |
+| --- | --- |
+| `--disc N` | MakeMKV drive index, for more than one drive |
+| `--force` | Rip a disc that is already in the ledger |
+| `--dry-run` | Scan and triage; rip nothing |
+| `--redo` | Re-rip titles already recorded as done |
+| `--no-eject` | Leave the disc in the drive even on a clean rip |
+| `--wait` | Block for the drive lock instead of stepping aside |
 
-## Reclaiming space
+Titles shorter than four minutes are skipped. **A failed title does not stop the
+disc** — the rest still rip, and re-running retries only what failed, because
+the disc being in the drive is the expensive part.
 
-`disc-cleanup` runs whenever you get to it, over everything that has shipped —
-deliberately not chained to shipping, because you cannot know whether to keep a
-source in the minute the transfer finishes. The interlaced-cartoon case only
-surfaces once you watch the result, and that is exactly when you want the raw
-file still there.
+The disc ejects only once it is known good. Read errors leave it in the drive
+for `disc-verify` to rule on; failed titles leave it in for a retry.
+
+### disc-verify
+
+Decodes a rip that reported read errors and finds out whether it is actually
+damaged.
 
 ```sh
-disc-cleanup                 # every shipped disc
-disc-cleanup <slug>          # just one
-disc-cleanup --dry-run       # show what would go; delete nothing
-disc-cleanup --verify-only   # re-check the NAS copies, offer nothing
+disc-verify               # check whatever needs checking
+disc-verify --all         # check every title, not just suspect ones
 ```
 
-It re-proves the copy before offering anything. The check at ship time is not
-enough — that was then, and a NAS can lose a file in between. Only after a fresh
-checksum comparison does it ask, **separately, per folder**:
+| Flag | Effect |
+| --- | --- |
+| `--all` | Check every title, not only those with read errors |
+| `--force` | Re-check titles already verified |
+| `--wait` | Block for the CPU lock instead of stepping aside |
+| `--no-eject` | Leave the disc in the drive even once it verifies |
 
-- **Transcoded output** — what shipped. Safe to delete; keep it only to re-ship
-  without re-transcoding.
-- **Source files** — keep these if the transcode might need redoing. Recovering
-  them otherwise means the disc goes back in the drive.
+MakeMKV works around unreadable sectors and still exits successfully, which
+means a damaged rip reaches your library looking exactly like a good one. This
+decodes every frame and discards the output: silence means the file is intact.
+A 33 GB feature takes about five minutes.
 
-Two things are never offered. A source taller than 1080p is kept automatically,
-because re-ripping a UHD disc to recover a master is not a trade worth making
-twice. And a disc whose `keep_source` is `always` is skipped.
+It runs before identification, since identifying costs real money and there is
+no sense paying that for a rip that turns out to be unusable. **A clean rip
+exits immediately**, so it costs nothing when there is nothing to check.
 
-### Guards
+### disc-identify
 
-This is the only code in the project that removes anything, so the delete site
-re-establishes every precondition itself rather than trusting the caller that
-found the path.
+Works out what each ripped file actually is, and proposes names.
+
+```sh
+disc-identify
+disc-identify --frames-only    # build contact sheets, skip the agent
+disc-identify --from-log       # rebuild the plan from the last run
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--refresh-frames` | Rebuild contact sheets even if they exist |
+| `--frames-only` | Build the inventory and sheets, then stop |
+| `--from-log` | Re-derive the plan from the saved run, without calling the agent again |
+| `--timeout N` | Seconds before the agent is given up on (default 1800) |
+| `--model NAME` | Override the model |
+
+For each file it probes the streams and builds two contact sheets — the first 75
+seconds in 3-second steps, where title cards live, and 16 frames spread across
+the runtime. Those go to a headless Claude Code session along with an inventory,
+which reads them, looks up what the disc actually ships, and writes `plan.json`.
+
+It proposes; it never renames. Every entry carries the evidence behind it —
+title card text, a runtime that matched and its source, or where in the feature
+a file's footage sits — so review means reading reasons rather than opening
+files.
+
+`--from-log` matters because a run costs money: if the plan format changes, you
+can rebuild it from the saved response instead of paying twice.
+
+### disc-apply
+
+Applies the naming plan, after review.
+
+```sh
+disc-apply                # review it item by item
+disc-apply --dry-run      # show what would happen
+disc-apply --revert       # put the files back
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--yes` | Accept every proposal without review |
+| `--auto` | Accept only if every item came back high confidence |
+| `--reset` | Put the files back, then review again |
+| `--revert` | Put the files back under their original names |
+| `--dry-run` | Show what would happen; change nothing |
+
+Review walks each item with its evidence: `enter` accepts, `e` edits the name,
+`r` rejects, `k` leaves the file alone, `f` opens the contact sheets, `q` stops.
+Decisions save as you make them, so quitting and resuming picks up where you
+left off. A final summary lists every rename and move before anything happens.
+
+**The drainer applies plans on its own** using `--auto`, which accepts only when
+every item is high confidence and nothing was left unidentified. One uncertain
+item sends the whole disc to review, because the items are judged together. So
+this is a gate exactly when there is something worth looking at.
+
+Rejected files are moved to `rejected/`, never deleted. `--revert` puts
+everything back, which is how to recover a wrongly rejected extra without
+putting the disc back in the drive.
+
+### disc-transcode
+
+Encodes what survived review.
+
+```sh
+disc-transcode
+disc-transcode --dry-run --quiet
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--dry-run` | Show the commands; transcode nothing |
+| `--force` | Redo files already marked done |
+| `--wait` | Block for the CPU lock instead of stepping aside |
+| `--quiet` | Hide the transcoder's progress output |
+
+Routes on resolution: above 1080p to `hevc-transcode.rb`, otherwise
+`transcode-video.rb`, both carrying all subtitle tracks through.
+
+Output is shaped exactly as it will ship — a movie folder when more than one
+file is involved, a bare file when the feature is all there is, because Plex
+needs the folder for extras to attach and does not want one otherwise.
+
+Progress is tracked per file, so an interrupted run resumes at the next file
+rather than restarting a two-hour feature. Files already in the target format
+are linked rather than re-encoded, so pointing this at already-transcoded
+content costs nothing.
+
+### disc-ship
+
+Copies the transcoded output to your library and proves it arrived.
+
+```sh
+disc-ship
+disc-ship --dry-run
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--dry-run` | Show what would be copied; copy nothing |
+| `--force` | Overwrite files already at the destination |
+| `--wait` | Block for the network lock instead of stepping aside |
+| `--quiet` | Hide rsync progress |
+
+Two checks make this safe to run unattended. It **confirms the share is really
+mounted** rather than just that the path exists — an unmounted share leaves a
+bare directory on your startup disk that looks writable and is not. And it
+**verifies the copy** afterward with a checksum comparison, so success means
+every byte arrived rather than that rsync did not complain.
+
+A name collision parks the disc instead of overwriting. If a movie is already in
+your library as a single file and extras turn up later, the existing file is
+moved into a folder first, since Plex needs the folder for extras to attach.
+
+### disc-cleanup
+
+Offers to reclaim local space, once there is proof the media is safe elsewhere.
+
+```sh
+disc-cleanup              # every shipped disc
+disc-cleanup --dry-run    # show what would go
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--verify-only` | Re-check the copies in your library; offer nothing |
+| `--dry-run` | Show what would be deleted; delete nothing |
+
+Deliberately not chained to shipping: you cannot know whether to keep a source
+in the minute the transfer finishes. A bad crop or an interlaced cartoon only
+shows up once you watch the result, and that is exactly when you want the
+original still there.
+
+It re-proves the copy before offering anything, then asks separately about the
+transcoded output and the source files, because the case that comes up is
+discarding a bad transcode while keeping the source to retry.
+
+This is the only code in the project that deletes anything, so the delete site
+re-establishes every precondition itself:
 
 | Guard | Refuses |
 | --- | --- |
-| Inside the queue root | Any path outside `DISC_PIPELINE_ROOT` |
-| Not the root itself | The queue root, however it was reached |
+| Inside the working directory | Any path outside `DISC_PIPELINE_ROOT` |
+| Not the root itself | The working directory, however it was reached |
 | Symlinks resolved first | A link inside the queue pointing out of it |
-| Provenance | A path with no `manifest.json`, `plan.json`, or `.disc-pipeline` beside it — if the pipeline did not make it, the pipeline does not remove it |
-| Shipped only | Anything that has not reached the NAS |
-| Freshly verified | Anything whose copy does not checksum-match *right now*, not at ship time |
-| Explicit consent | Anything you did not answer `y` to, per disc and per folder |
-| Masters | A source taller than 1080p, or a disc with `keep_source: always` |
+| Provenance | A path with no manifest beside it |
+| Shipped only | Anything that has not reached your library |
+| Freshly verified | Anything whose copy does not match *right now* |
+| Explicit consent | Anything you did not answer `y` to |
+| Masters | Sources above 1080p, kept automatically |
 
-`--dry-run` walks the whole flow, reports what each disc would offer and the
-total reclaimable, and prompts for nothing.
+### disc-run
+
+Decides what can happen next and starts it.
+
+```sh
+disc-run                  # one pass
+disc-run --watch          # keep going until only the gates are left
+disc-run --dry-run        # report what would start
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--watch` | Keep polling until nothing is left to advance |
+| `--interval N` | Seconds between passes (default 30) |
+| `--grace N` | Seconds idle before a watch session exits (default 120) |
+| `--dry-run` | Report what would start; start nothing |
+
+Stages never call each other. Each records where it got to, and this reads that
+and launches whatever can run — which is why the pipeline survives being killed
+partway through.
+
+It respects one lock per resource: one optical drive, one CPU budget, one
+network link. Anything already holding a lock, including a stage you started by
+hand, is left alone. A session holds off idle sleep for exactly as long as it
+runs, and exits on its own once only the gates remain.
+
+### disc-status
+
+Shows where every disc stands and what it is waiting on.
+
+```sh
+disc-status
+disc-status --json
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--json` | Machine-readable output |
+
+Reads state from disk and starts nothing. A log tells you what happened; this
+tells you what needs you.
+
+---
 
 ## Design notes
 
-**Nothing is ever deleted.** Rejected titles are moved aside; retention prompts
-are explicit and per-folder.
+**Nothing is deleted except by `disc-cleanup`, and only with your say-so.**
+Rejected files are moved aside. Every other stage only adds.
 
 **Exit code zero is not success.** MakeMKV works around bad reads and exits
-clean, so `disc-rip` scans its output for corruption messages and flags the rip
-suspect regardless of exit status.
-
-**A suspect rip gets proved rather than guessed at.** `disc-verify` decodes
-every frame and discards the output — silence means the file is fine. It runs
-*before* identification, because identifying costs money and minutes and there
-is no sense paying that for a rip that turns out to be unusable. A 33 GB, 2:24
-feature takes about five minutes, which is cheap enough to do automatically. A
-clean rip skips it entirely, so it sits unconditionally in the chain.
+clean, so `disc-rip` reads its output for corruption messages and flags the rip
+suspect regardless of what it returned.
 
 **A title index is a position, not an identity.** It depends on the minimum
-length used to enumerate, so every MakeMKV call has to agree on that value or
-the wrong title gets ripped. Rips are verified against the expected runtime for
-the same reason.
+length used to enumerate titles, so every MakeMKV call has to agree on that
+value or a different title gets ripped than the one you asked for. Rips are
+checked against the expected runtime for the same reason.
 
 **Some discs fight back.** Lionsgate releases in particular ship dozens of decoy
 playlists — RED 2 presents 130 feature-length titles, identical in chapter
-count, size, and stream layout. When the cluster metric trips, `disc-rip` works
-a resolution ladder rather than guessing, and records the answer in
-`overrides.json` so the disc is only ever solved once.
+count, size, and stream layout, differing only in which short alternate segments
+they splice in. Pick wrong and the film plays with a scene looping. When that
+pattern is detected, `disc-rip` works a resolution ladder rather than guessing,
+and records the answer in `overrides.json` so the disc is only ever solved once.
 
-## Status
+**Extras are named to
+[Plex's conventions](https://support.plex.tv/articles/local-files-for-trailers-and-extras/)**
+— `Descriptive Name-<type>.mkv`, where the type is one of `behindthescenes`,
+`deleted`, `featurette`, `interview`, `scene`, `short`, `trailer`, or `other`.
 
-Under construction. See `git log` for what's landed.
+## Not yet supported
+
+**TV discs.** The queue records a media type and routes to `TV Shows/`, but
+episode identification needs subtitle extraction and a numbering scheme that
+handles shows pairing two segments per half-hour, where broadcast and database
+numbering disagree. Movies only for now.
 
 ## References
 
 - [Plex: local files for trailers and extras](https://support.plex.tv/articles/local-files-for-trailers-and-extras/)
-- [MakeMKV CLI docs](https://www.makemkv.com/developers/usage.txt)
-- [TheTVDB](https://thetvdb.com) — episode numbering for TV discs (v2)
+- [MakeMKV CLI documentation](https://www.makemkv.com/developers/usage.txt)
+- [video_transcoding](https://github.com/lisamelton/video_transcoding) — the transcoders this calls
+- [TheTVDB](https://thetvdb.com) — episode numbering, for when TV support lands
