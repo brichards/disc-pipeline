@@ -41,10 +41,11 @@ RETRY = {
 }
 
 # Stages that stop and wait for a person. The drainer never advances past these.
-GATES = (manifest.IDENTIFIED, manifest.SHIPPED, manifest.DONE)
+GATES = (manifest.SHIPPED, manifest.DONE)
 
-# With automatic naming on, the review gate is only a gate for plans that are
-# not unanimously confident. disc-apply --auto refuses the rest.
+# Naming applies itself when the plan is unanimously high confidence.
+# disc-apply --auto refuses anything less and leaves the disc for review, so
+# this is a gate exactly when there is something worth looking at.
 AUTO_APPLY_ACTION = ("disc-apply", locks.CPU)
 
 IDLE_GRACE = 120  # seconds with nothing to do before a session gives up
@@ -136,7 +137,7 @@ def _pass(running, args):
 def _next_action(data):
     """What this disc needs, or (None, None) if it needs a person."""
     state = data.get("state")
-    if state == manifest.IDENTIFIED and config.AUTO_APPLY:
+    if state == manifest.IDENTIFIED:
         return AUTO_APPLY_ACTION
     if state in GATES:
         return None, None

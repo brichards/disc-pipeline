@@ -60,14 +60,6 @@ DECOY_CLUSTER_THRESHOLD = 6
 DECOY_SEGMENT_OVERLAP = 0.5
 
 
-# Let the drainer apply a naming plan without review, but only one where every
-# item came back high-confidence. Off by default: a wrong rename is visible in
-# the library and easily fixed, while a wrong reject is silent -- an extra that
-# simply never appears, and nothing prompts you to go looking for it.
-AUTO_APPLY = os.environ.get("DISC_PIPELINE_AUTO_APPLY", "").lower() in (
-    "1", "true", "yes")
-
-
 def check_environment():
     """Fail loudly and specifically rather than mysteriously.
 
