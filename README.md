@@ -357,6 +357,11 @@ rather than restarting a two-hour feature. Files already in the target format
 are linked rather than re-encoded, so pointing this at already-transcoded
 content costs nothing.
 
+**The drainer transcodes quietly** using `--quiet`, because the transcoders
+print a line per percent and every disc writes to the same log — an hour of
+encoding would bury a rip running beside it. The start and finish lines for
+each file still appear. Run the stage yourself to watch the encode live.
+
 ### disc-ship
 
 Copies the transcoded output to your library and proves it arrived.
