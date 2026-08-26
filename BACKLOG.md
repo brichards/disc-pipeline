@@ -40,16 +40,11 @@ comment and docstring, and the README is 517 lines.
 
 MIT, 2026, Brian Richards.
 
-## DP-02 — Fix the install instructions — `todo`
+## DP-02 — Fix the install instructions — `done`
 
-`gem install video_transcoding` installs the wrong tool. That gem ships
-`convert-video`, `detect-crop`, `query-handbrake-log` and `transcode-video`,
-no `.rb` binaries. The scripts this project calls are `transcode-video.rb` and
-`hevc-transcode.rb`, Copyright (c) 2025 Lisa Melton, from her separate
-standalone-script project. Following the README today yields a pipeline that
-fails at transcode.
-
-Confirm the canonical project name and install steps first.
+The transcoders come from two repos, both installed by hand:
+`transcode-video.rb` from `lisamelton/video_transcoding`, `hevc-transcode.rb`
+from `lisamelton/more-video-transcoding`. Neither is a gem any more.
 
 ## DP-03 — Test harness — `todo`
 
@@ -143,6 +138,17 @@ Self-contained. `ffmpeg -filter:v idet` counts TFF/BFF/progressive/
 undetermined frames, so source and transcode can be compared. Preventing it is
 a HandBrake comb-detection question; verify how `transcode-video.rb` exposes
 that before promising a flag.
+
+## DP-15 — Re-evaluate the UHD routing — `todo`
+
+`hevc-transcode.rb` comes from `more-video-transcoding`, which its author has
+stopped developing: "all the ratecontrol systems and behaviors here have been
+rolled into the redesigned and rewritten version of `transcode-video.rb`."
+
+So the above-1080p branch in `transcode.route()` may be routing to a
+deprecated script for behavior the current `transcode-video.rb` already has.
+Check what the rewritten script does with UHD before deciding. Related to
+DP-12, since comb detection sits in the same tool.
 
 ## DP-13 — Re-evaluate the language — `todo`
 

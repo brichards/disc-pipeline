@@ -34,9 +34,8 @@ review its reasoning rather than the files.
 
 ## Requirements
 
-Everything in this project is Python standard library — no `pip`, no
-virtualenv, no dependencies to go missing between uses. External tools are
-called as subprocesses.
+The scripts themselves import only the Python standard library. Everything
+else is an external program, called as a subprocess.
 
 | Tool | Needed by | Install |
 | --- | --- | --- |
@@ -44,21 +43,44 @@ called as subprocesses.
 | [MakeMKV](https://www.makemkv.com) | `disc-rip` | `brew install --cask makemkv` |
 | [FFmpeg](https://ffmpeg.org) | `disc-identify`, `disc-verify`, `disc-transcode` | `brew install ffmpeg` |
 | [HandBrakeCLI](https://handbrake.fr) | `disc-transcode` | `brew install handbrake` |
-| [video_transcoding](https://github.com/lisamelton/video_transcoding) | `disc-transcode` | `gem install video_transcoding` |
+| Ruby | `disc-transcode` | ships with macOS |
+| `transcode-video.rb` | `disc-transcode` | see below |
+| `hevc-transcode.rb` | `disc-transcode` | see below |
 | [Claude Code](https://claude.com/claude-code) | `disc-identify` | `npm install -g @anthropic-ai/claude-code` |
 | rsync | `disc-ship` | ships with macOS |
-
-Two notes on those.
 
 **MakeMKV needs a key to read Blu-ray discs.** The beta key is free and posted
 on [the MakeMKV forum](https://forum.makemkv.com/forum/viewtopic.php?t=1053),
 but it expires every couple of months. DVDs work without one.
 
-**video_transcoding provides `transcode-video.rb` and `hevc-transcode.rb`**,
-Lisa Melton's tools for producing files much smaller than the source while
-staying hard to tell apart from it. `disc-transcode` calls whichever suits the
-source resolution. If you want different encoding settings, those are the files
-to configure rather than anything here.
+### The transcoders
+
+`disc-transcode` calls Lisa Melton's Ruby scripts, which produce files much
+smaller than the source while staying hard to tell apart from it. They route
+by resolution: above 1080p to `hevc-transcode.rb`, otherwise
+`transcode-video.rb`. Configure encoding settings in those scripts rather than
+anywhere here.
+
+They come from two repositories and install by hand, not as a gem:
+
+```sh
+git clone https://github.com/lisamelton/video_transcoding.git
+git clone https://github.com/lisamelton/more-video-transcoding.git
+chmod +x video_transcoding/*.rb more-video-transcoding/*.rb
+cp video_transcoding/transcode-video.rb more-video-transcoding/hevc-transcode.rb /usr/local/bin/
+```
+
+If you installed `video_transcoding` as a gem at some point, remove it —
+it puts an older `transcode-video` on your `PATH` alongside the script that
+replaced it:
+
+```sh
+gem uninstall video_transcoding
+```
+
+`more-video-transcoding` is no longer developed upstream; its author has
+folded its behavior into `transcode-video.rb`. `hevc-transcode.rb` still works
+and is what this calls today.
 
 ## Install
 
@@ -513,7 +535,8 @@ numbering disagree. Movies only for now.
 
 - [Plex: local files for trailers and extras](https://support.plex.tv/articles/local-files-for-trailers-and-extras/)
 - [MakeMKV CLI documentation](https://www.makemkv.com/developers/usage.txt)
-- [video_transcoding](https://github.com/lisamelton/video_transcoding) — the transcoders this calls
+- [video_transcoding](https://github.com/lisamelton/video_transcoding) — `transcode-video.rb`
+- [more-video-transcoding](https://github.com/lisamelton/more-video-transcoding) — `hevc-transcode.rb`
 - [TheTVDB](https://thetvdb.com) — episode numbering, for when TV support lands
 
 ## License
