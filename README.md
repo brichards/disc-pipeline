@@ -515,3 +515,7 @@ numbering disagree. Movies only for now.
 - [MakeMKV CLI documentation](https://www.makemkv.com/developers/usage.txt)
 - [video_transcoding](https://github.com/lisamelton/video_transcoding) — the transcoders this calls
 - [TheTVDB](https://thetvdb.com) — episode numbering, for when TV support lands
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -36,9 +36,9 @@ comment and docstring, and the README is 517 lines.
 
 ---
 
-## DP-01 — LICENSE — `todo`
+## DP-01 — LICENSE — `done`
 
-MIT. Needs the exact name for the copyright line.
+MIT, 2026, Brian Richards.
 
 ## DP-02 — Fix the install instructions — `todo`
 
