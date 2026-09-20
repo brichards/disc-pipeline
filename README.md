@@ -64,12 +64,15 @@ Requires macOS, Python 3.9+ (standard library only), and the following tools:
 | --- | --- | --- |
 | [MakeMKV](https://www.makemkv.com) | Rips discs. | `disc-rip` |
 | [FFmpeg](https://ffmpeg.org) | Inspects and decodes video; generates artifacts for identification. | `disc-rip`, `disc-verify`, `disc-identify`, `disc-transcode` |
-| [video_transcoding](https://github.com/lisamelton/video_transcoding) | Manages the actual transcode step, calling either `transcode-video.rb` (1080p and below) or `hevc-transcode.rb` (4K). | `disc-transcode` |
+| [transcode-video.rb](https://github.com/lisamelton/video_transcoding) | Transcodes 1080p and below. | `disc-transcode` |
+| [hevc-transcode.rb](https://github.com/lisamelton/more-video-transcoding) | Transcodes 4K. | `disc-transcode` |
 | [HandBrakeCLI](https://handbrake.fr) | Encodes video (called by video_transcoding). | `disc-transcode` |
 | [Claude Code](https://code.claude.com/docs/en/setup), or LLM of choice | Identifies each file and writes a plan to rename or reject it. | `disc-identify` |
 | rsync (included with macOS) | Copies files to the media library and checksums the result. | `disc-ship`, `disc-cleanup` |
 
 MakeMKV must be installed at `/Applications/MakeMKV.app`. Blu-rays need a key; the beta key is free on the [MakeMKV forum](https://forum.makemkv.com/forum/viewtopic.php?t=1053) but expires periodically.
+
+The two transcoder scripts come from separate projects by the same author. `more-video-transcoding` is no longer developed; its author has folded that behavior into `transcode-video.rb`.
 
 ## Installation
 
@@ -87,7 +90,16 @@ brew install python ffmpeg handbrake
 brew install --cask makemkv claude-code
 ```
 
-Install the [video_transcoding tools](https://github.com/lisamelton/video_transcoding) according to their README.
+The transcoder scripts install by hand rather than as a gem:
+
+```
+git clone https://github.com/lisamelton/video_transcoding.git
+git clone https://github.com/lisamelton/more-video-transcoding.git
+chmod +x video_transcoding/*.rb more-video-transcoding/*.rb
+cp video_transcoding/transcode-video.rb more-video-transcoding/hevc-transcode.rb /usr/local/bin/
+```
+
+If you installed `video_transcoding` as a gem previously, run `gem uninstall video_transcoding` to remove the older commands it placed on your `PATH`.
 
 Two locations are set by environment variable:
 
@@ -377,3 +389,7 @@ Notes:
 **A clean exit is not always a clean rip.** MakeMKV works around bad sectors and returns 0, so `disc-rip` scans output for read errors and flags suspicious rips; `disc-verify` decodes any suspicious rips to validate success.
 
 **Titles are verified by runtime, not index.** MakeMKV title numbers shift with the minimum-length setting, so every MakeMKV call uses the same value. Each ripped file is compared against the runtime reported by the scan and flagged as failed on a mismatch.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
