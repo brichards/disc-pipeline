@@ -94,15 +94,12 @@ Includes the prose pass: delete comments failing the Standards bar, and the
 27 one-line functions that add no meaning. `_free()` in disc-cleanup and the
 9-line `MIN_TITLE_LENGTH` comment in config.py are the reference cases.
 
-## DP-07 — Rewrite the README — `todo`
+## DP-07 — Rewrite the README — `done`
 
-After DP-05 and DP-06.
-
-It should cover install, run, and what each command does. Fixes already
-identified: delete "Two notes on those."; write `~/Movies/Rips`; delete "Why
-it exists"; remove "It's not X, it's Y" constructions; rename "How a disc
-moves through"; drop the "Stops for you?" column; remove the zero-dependency
-claim.
+Rewritten on main (756bb9e): 544 lines down to 379, structure reordered, the
+"Stops for you?" column and "Why it exists" gone, `inventory.json` and
+`scratch/` documented for the first time. Its voice is the house style now,
+recorded in CLAUDE.md.
 
 **Standing rule: any change to a command or feature updates the README in the
 same branch.**
