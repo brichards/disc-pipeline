@@ -251,7 +251,7 @@ disc-verify --all
 | Flag | Effect |
 | --- | --- |
 | `--all` | Check every title, not only those with read errors |
-| `--force` | Re-check titles already verified |
+| `--redo` | Re-check titles already verified |
 | `--wait` | Wait for the CPU lock instead of stepping aside |
 | `--no-eject` | Leave the disc in the drive after it verifies |
 
@@ -320,11 +320,11 @@ disc-transcode --dry-run
 | Flag | Effect |
 | --- | --- |
 | `--dry-run` | Show the commands; transcode nothing |
-| `--force` | Redo files already marked done |
+| `--redo` | Redo files already marked done |
 | `--wait` | Wait for the CPU lock instead of stepping aside |
 | `--quiet` | Hide the transcoder's progress output |
 
-Running again will only transcode incomplete files. Using `--force` will also transcode files marked done.
+Running again will only transcode incomplete files. Using `--redo` will also transcode files marked done.
 
 ### disc-ship
 

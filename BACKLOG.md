@@ -64,19 +64,15 @@ why they pass the zero-tests bar:
 
 Do not pad this list to look thorough.
 
-## DP-04 — Standardize flags — `todo`
+## DP-04 — Standardize flags — `done`
 
-`--force` means three different things:
+Two meanings, one name each: `--redo` repeats work already marked done,
+`--force` overrides a refusal. `disc-verify --force` and
+`disc-transcode --force` became `--redo`; `disc-rip` and `disc-ship` were
+already correct.
 
-| Command | `--force` |
-| --- | --- |
-| `disc-rip` | re-rip a disc already in the ledger |
-| `disc-verify` | re-check titles already verified |
-| `disc-transcode` | redo files already marked done |
-
-`disc-rip` also splits `--force` and `--redo` where others use `--force`
-alone. `disc-apply` carries `--yes` (accept everything) and `--auto` (accept
-only when unanimously high confidence).
+`disc-apply`'s `--yes` and `--auto` were left alone — they are different in
+kind, not inconsistently named.
 
 ## DP-05 — Extract the repeated stage shape — `todo`
 

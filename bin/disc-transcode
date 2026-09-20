@@ -26,7 +26,7 @@ def main():
                         help="queue slug or directory; defaults to the current directory")
     parser.add_argument("--dry-run", action="store_true",
                         help="show the commands, transcode nothing")
-    parser.add_argument("--force", action="store_true",
+    parser.add_argument("--redo", action="store_true",
                         help="redo files already marked done")
     parser.add_argument("--wait", action="store_true",
                         help="block for the CPU lock instead of stepping aside")
@@ -74,7 +74,7 @@ def main():
                        f"(already {transcode.TARGET_AUDIO}, linked not re-encoded)")
             continue
 
-        if destination.exists() and not args.force:
+        if destination.exists() and not args.redo:
             notify.say(f"  have  {source.name}  ({destination.name} exists)")
             _mark(keeper["item"], "done", destination)
             continue
