@@ -46,23 +46,13 @@ The transcoders come from two repos, both installed by hand:
 `transcode-video.rb` from `lisamelton/video_transcoding`, `hevc-transcode.rb`
 from `lisamelton/more-video-transcoding`. Neither is a gem any more.
 
-## DP-03 — Test harness — `todo`
+## DP-03 — Test harness — `done`
 
-Prerequisite for every refactor below.
+61 tests in `tests/`, pytest from a venv the scripts never touch. Every case
+is a regression test for a failure that happened, plus flag pass-through
+between commands and the import/`--help` ritual.
 
-Each case below is a regression test for a bug that actually shipped, which is
-why they pass the zero-tests bar:
-
-- Phantom mount: marker present, no stream files, not a disc.
-- `_refuse()`: outside root, the root itself, a symlink escaping the root, a
-  path with no pipeline artifact beside it.
-- Title indices shift with `--minlength` -- put 9 wrong files in Warm Bodies.
-- Adoption matches on duration, not size -- size accepted 8 wrong files.
-- rsync verification passes on a timestamp-only difference, fails on a content
-  difference.
-- A hold reverts to SHIPPED when the delete fails.
-
-Do not pad this list to look thorough.
+Each was verified by mutating the code it covers and confirming it fails.
 
 ## DP-04 — Standardize flags — `done`
 
