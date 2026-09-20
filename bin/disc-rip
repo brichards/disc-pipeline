@@ -241,7 +241,7 @@ def _split_todo(candidates, records, raw_dir, redo, kind):
     A manifest written before per-title status existed -- or one interrupted
     hard enough to lose it -- still has the finished files sitting in raw/.
     Rather than re-rip an hour of video, adopt an output that is present and
-    close enough to its expected size, and record it.
+    whose runtime matches the scan, and record it.
     """
     todo, have = [], []
     for title in candidates:
