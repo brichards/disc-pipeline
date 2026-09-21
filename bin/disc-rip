@@ -122,8 +122,8 @@ def _run(args, discs):
             return 1
 
     raw_dir = manifest.subdir(slug, "raw")
-    records = {r["source_file"]: r for r in data["titles"]}
-    todo, have = _split_todo(candidates, records, raw_dir, args.redo)
+    records = {_title_key(r): r for r in data["titles"]}
+    todo, have = _split_todo(candidates, records, raw_dir, args.redo, kind)
     if not args.dry_run:  # a dry run reports; it records nothing
         manifest.save(data)
 
@@ -164,7 +164,7 @@ def _run(args, discs):
     # the drive now; putting it back later is the expensive part. So a failure
     # is recorded against its title and the run moves on.
     for title in todo:
-        record = records[title.source_file]
+        record = records[_title_key(title)]
         output = raw_dir / title.output_name
         notify.say(
             f"Ripping title {title.index} "
@@ -174,7 +174,7 @@ def _run(args, discs):
             args.disc, title.index, raw_dir, min_length
         )
         ok = code == 0 and output.exists()
-        mismatch = ok and not _duration_matches(output, title.seconds)
+        mismatch = ok and not _duration_matches(output, title.seconds, kind)
         if mismatch:
             # The output is not the title that was asked for. Never let this
             # pass: a wrong-but-plausible file is worse than a missing one.
@@ -221,17 +221,21 @@ def _run(args, discs):
 # which no tolerance can separate. The real guarantee is that the rip and the
 # scan now enumerate identically, so the indices cannot drift in the first
 # place.
-DURATION_TOLERANCE = 1.5
+# A Blu-ray playlist states its runtime exactly. A DVD's IFO does not: the PGC
+# playback time is assembled from cell times and drifts from what the titles
+# actually contain, by tens of seconds on a feature.
+DURATION_TOLERANCE = {disc.BLURAY: 1.5, disc.DVD: 60.0}
 
 
-def _duration_matches(path, expected_seconds):
+def _duration_matches(path, expected_seconds, kind):
     info = probe.ffprobe(path)
     if not info or not expected_seconds:
         return False
-    return abs(info["seconds"] - expected_seconds) <= DURATION_TOLERANCE
+    tolerance = DURATION_TOLERANCE.get(kind, 1.5)
+    return abs(info["seconds"] - expected_seconds) <= tolerance
 
 
-def _split_todo(candidates, records, raw_dir, redo):
+def _split_todo(candidates, records, raw_dir, redo, kind):
     """Decide what still needs ripping, and adopt anything already on disk.
 
     A manifest written before per-title status existed -- or one interrupted
@@ -241,7 +245,7 @@ def _split_todo(candidates, records, raw_dir, redo):
     """
     todo, have = [], []
     for title in candidates:
-        record = records[title.source_file]
+        record = records[_title_key(title)]
         output = raw_dir / title.output_name
         status = record.get("rip", {}).get("status")
 
@@ -250,7 +254,7 @@ def _split_todo(candidates, records, raw_dir, redo):
             continue
 
         if not redo and status != "failed" and output.exists():
-            if _duration_matches(output, title.seconds):
+            if _duration_matches(output, title.seconds, kind):
                 record["rip"] = {
                     "status": "done",
                     "exit_code": 0,
@@ -265,18 +269,33 @@ def _split_todo(candidates, records, raw_dir, redo):
     return todo, have
 
 
-def _merge_titles(previous, candidates):
-    """Rebuild the title list from a fresh scan without losing rip status.
+def _title_key(title):
+    """Identify a title by its content rather than its position.
 
-    Keyed on the source playlist rather than the index, because MakeMKV's
-    numbering is not guaranteed stable across scans.
+    MakeMKV numbers titles by position in an enumeration, which moves. The
+    source playlist is stable, but it is a Blu-ray field: DVD titles report no
+    source file at all, so every one of them keys the same and they collapse
+    into a single shared record. The segment map separates them.
     """
-    kept = {r.get("source_file"): r.get("rip") for r in previous if r.get("rip")}
+    if isinstance(title, dict):
+        source = title.get("source_file", "")
+        segments = title.get("segment_map", "")
+        name = title.get("output_name", "")
+    else:
+        source, segments, name = (title.source_file, title.segment_map,
+                                  title.output_name)
+    return f"{source}|{segments}" if (source or segments) else name
+
+
+def _merge_titles(previous, candidates):
+    """Rebuild the title list from a fresh scan without losing rip status."""
+    kept = {_title_key(r): r.get("rip") for r in previous if r.get("rip")}
     records = []
     for title in candidates:
         record = _title_record(title)
-        if title.source_file in kept:
-            record["rip"] = kept[title.source_file]
+        key = _title_key(title)
+        if key in kept:
+            record["rip"] = kept[key]
         records.append(record)
     return records
 
