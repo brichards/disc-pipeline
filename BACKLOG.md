@@ -143,6 +143,17 @@ deprecated script for behavior the current `transcode-video.rb` already has.
 Check what the rewritten script does with UHD before deciding. Related to
 DP-12, since comb detection sits in the same tool.
 
+## DP-16 — Survive a dead network during identify — `todo`
+
+`disc-identify` spent 172 seconds on a call that could not connect, then wrote
+`logs/identify.json` holding `API Error: Unable to connect to API
+(ConnectionRefused)` and no plan. The disc was left with `frames/` empty and no
+`plan.json`, and nothing distinguished this from the agent declining to answer.
+
+An unreachable agent is not a bad disc. It should fail fast, say that the
+network is the problem, and leave a retryable hold so the drainer picks the
+disc up again once the connection returns.
+
 ## DP-13 — Re-evaluate the language — `todo`
 
 Deferred until feature-complete. The original reason for Python stands until
