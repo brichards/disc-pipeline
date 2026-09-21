@@ -42,12 +42,15 @@ def hms(seconds):
     return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
-def decode(path, start=None, duration=None):
-    """Decode and throw the output away. Returns (ok, error_lines).
+# ffmpeg tags each message with the component that produced it. The null muxer
+# we discard output through reports non-monotonic timestamps at error level,
+# and DVD MPEG-2 produces those in normal playback. Only the decoders speak to
+# whether the picture and sound are intact.
+_MUXER_NOISE = re.compile(r"^\[null @ ")
 
-    -v error keeps quiet about everything except real decode failures, so an
-    empty result is a clean bill of health.
-    """
+
+def decode(path, start=None, duration=None):
+    """Decode and throw the output away. Returns (ok, error_lines)."""
     command = ["ffmpeg", "-v", "error"]
     if start is not None:
         command += ["-ss", str(start)]
@@ -57,5 +60,6 @@ def decode(path, start=None, duration=None):
     command += ["-f", "null", "-"]
 
     result = subprocess.run(command, capture_output=True, text=True, check=False)
-    lines = [line for line in result.stderr.splitlines() if line.strip()]
+    lines = [line for line in result.stderr.splitlines()
+             if line.strip() and not _MUXER_NOISE.match(line)]
     return (result.returncode == 0 and not lines), lines
