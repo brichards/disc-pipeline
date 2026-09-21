@@ -29,11 +29,21 @@ No comment restates the code or a name.
 
 ## Tests
 
-pytest, a development dependency. The runtime stays standard library only.
+pytest, a development dependency. The runtime stays standard library only, so
+tests run from a venv the scripts never touch:
+
+```
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
 
 A test earns its place by catching a failure that has happened or plausibly
 will. Judge each one by whether it would be written first if there were no
 tests at all. No coverage targets.
+
+Before trusting a new test, break the code it covers and confirm it fails. A
+test that passes against a mutated codebase is testing something else.
 
 ## Flags
 
