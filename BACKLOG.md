@@ -133,6 +133,22 @@ deprecated script for behavior the current `transcode-video.rb` already has.
 Check what the rewritten script does with UHD before deciding. Related to
 DP-12, since comb detection sits in the same tool.
 
+## DP-17 — disc-verify should adjudicate a failed title — `todo`
+
+A title that failed only its duration check leaves a file on disk that may
+well be fine, and there is no way to accept it short of editing the manifest.
+Re-ripping an hour of video to reach the same file is the only supported path.
+
+`disc-verify --force` fits the vocabulary -- it overrides the refusal to look
+at a failed title. Decode it; on a clean result promote it to done, recording
+that a person asked. Decoding proves the file is intact, not that it is the
+title that was asked for, so this stays explicit rather than automatic.
+
+## DP-18 — disc-rip points at a command that does not exist — `todo`
+
+`bin/disc-rip:121` tells you to run `disc-resolve <slug>` for a decoy disc.
+There is no such command. Either write it or say what to do instead.
+
 ## DP-16 — Survive a dead network during identify — `todo`
 
 `disc-identify` spent 172 seconds on a call that could not connect, then wrote
