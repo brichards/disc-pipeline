@@ -85,7 +85,7 @@ def main():
     prompt = agent.build_prompt(
         name, media_dir, work_dir, inventory_file, frames_dir, scratch_dir
     )
-    plan, raw, error = agent.run(
+    plan, raw, failure = agent.run(
         prompt,
         cwd=work_dir,
         extra_dirs=[media_dir, work_dir],
@@ -96,10 +96,15 @@ def main():
     (work_dir / "logs").mkdir(exist_ok=True)
     (work_dir / "logs" / "identify.json").write_text(raw or "", encoding="utf-8")
 
-    if error:
-        notify.alert("Identify failed", f"{name}: {error}")
-        manifest.hold(manifest.load(slug), f"identify failed: {error}")
-        notify.fail(error)
+    if failure:
+        notify.alert("Identify failed", f"{name}: {failure.message}")
+        manifest.hold(
+            manifest.load(slug),
+            f"identify failed: {failure.message}",
+            retryable=failure.retryable,
+            stage="identify",
+        )
+        notify.fail(failure.message)
 
     _write_plan(plan, name, media_dir, work_dir, slug, files=len(inventory))
     return 0
@@ -109,9 +114,9 @@ def _replan(name, media_dir, work_dir, slug):
     saved = work_dir / "logs" / "identify.json"
     if not saved.exists():
         notify.fail(f"no saved agent run at {saved}")
-    plan, error = agent._extract_plan(saved.read_text(encoding="utf-8"))
-    if error:
-        notify.fail(error)
+    plan, failure = agent._extract_plan(saved.read_text(encoding="utf-8"))
+    if failure:
+        notify.fail(failure.message)
     _write_plan(plan, name, media_dir, work_dir, slug, files=len(plan["items"]))
     return 0
 

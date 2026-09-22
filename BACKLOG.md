@@ -149,16 +149,17 @@ title that was asked for, so this stays explicit rather than automatic.
 `bin/disc-rip:121` tells you to run `disc-resolve <slug>` for a decoy disc.
 There is no such command. Either write it or say what to do instead.
 
-## DP-16 — Survive a dead network during identify — `todo`
+## DP-16 — Survive a transient agent failure — `done`
 
-`disc-identify` spent 172 seconds on a call that could not connect, then wrote
-`logs/identify.json` holding `API Error: Unable to connect to API
-(ConnectionRefused)` and no plan. The disc was left with `frames/` empty and no
-`plan.json`, and nothing distinguished this from the agent declining to answer.
+`disc-identify` treated every agent failure the same way: a hold nobody
+retries, reading `agent failed: agent failed`. Two of them in two days were
+transport faults that cleared on their own -- the network down, then an
+expired OAuth token.
 
-An unreachable agent is not a bad disc. It should fail fast, say that the
-network is the problem, and leave a retryable hold so the drainer picks the
-disc up again once the connection returns.
+The CLI describes both in its JSON envelope on stdout, which the non-zero exit
+path discarded in favour of an empty stderr. It now reads the envelope either
+way, and holds a run that never reached a verdict as retryable against the
+identify stage, so the drainer picks the disc back up once the cause clears.
 
 ## DP-13 — Re-evaluate the language — `todo`
 

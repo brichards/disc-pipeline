@@ -8,11 +8,29 @@ stage shells out to an agent, hands it contact sheets and an inventory, and
 takes back a proposal -- never a rename.
 """
 
+import dataclasses
 import json
+import re
 import shutil
 import subprocess
 
 DEFAULT_TIMEOUT = 1800
+
+
+@dataclasses.dataclass(frozen=True)
+class Failure:
+    message: str
+    retryable: bool = False
+
+
+# The claude CLI reports the HTTP status in its envelope when a request reached
+# the API, and names the transport in the message when it never got that far.
+RETRYABLE_STATUSES = frozenset({401, 408, 429, 500, 502, 503, 504})
+_UNREACHABLE = re.compile(
+    r"unable to connect|connection (refused|reset|error)"
+    r"|network is unreachable|temporary failure in name resolution",
+    re.IGNORECASE,
+)
 
 # Without an allowlist a headless run blocks on a permission prompt that nobody
 # is there to answer, and the stage hangs instead of failing. Web access is not
@@ -123,7 +141,7 @@ Return the plan as structured output."""
 
 
 def run(prompt, cwd, extra_dirs=(), timeout=DEFAULT_TIMEOUT, model=None):
-    """Invoke the agent. Returns (plan_dict, raw_stdout, error_or_None)."""
+    """Invoke the agent. Returns (plan_dict, raw_stdout, Failure_or_None)."""
     command = [
         "claude", "-p", prompt,
         "--output-format", "json",
@@ -145,13 +163,20 @@ def run(prompt, cwd, extra_dirs=(), timeout=DEFAULT_TIMEOUT, model=None):
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return None, "", f"agent timed out after {timeout}s"
+        return None, "", Failure(f"agent timed out after {timeout}s", True)
 
     if result.returncode != 0:
-        return None, result.stdout, (result.stderr or "").strip()[:500] or "agent failed"
+        try:
+            envelope = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            envelope = None
+        detail = (result.stderr or "").strip()[:500]
+        return None, result.stdout, _error_in(envelope) or Failure(
+            detail or f"agent exited {result.returncode}"
+        )
 
-    plan, error = _extract_plan(result.stdout)
-    return plan, result.stdout, error
+    plan, failure = _extract_plan(result.stdout)
+    return plan, result.stdout, failure
 
 
 def _extract_plan(stdout):
@@ -164,10 +189,11 @@ def _extract_plan(stdout):
     try:
         envelope = json.loads(stdout)
     except json.JSONDecodeError:
-        return None, "agent output was not JSON"
+        return None, Failure("agent output was not JSON")
 
-    if isinstance(envelope, dict) and envelope.get("is_error"):
-        return None, str(envelope.get("result", "agent reported an error"))[:500]
+    failure = _error_in(envelope)
+    if failure:
+        return None, failure
 
     if isinstance(envelope, dict) and isinstance(envelope.get("structured_output"), dict):
         payload = envelope["structured_output"]
@@ -178,9 +204,24 @@ def _extract_plan(stdout):
         try:
             payload = json.loads(payload)
         except json.JSONDecodeError:
-            return None, "agent result was not a JSON plan"
+            return None, Failure("agent result was not a JSON plan")
 
     if not isinstance(payload, dict) or "items" not in payload:
-        return None, "agent plan had no items"
+        return None, Failure("agent plan had no items")
 
     return payload, None
+
+
+def _error_in(envelope):
+    """The CLI describes a failed run on stdout, whatever it exits with."""
+    if not isinstance(envelope, dict) or not envelope.get("is_error"):
+        return None
+    message = str(envelope.get("result", "agent reported an error"))[:500]
+    return Failure(message, _is_retryable(envelope, message))
+
+
+def _is_retryable(envelope, message):
+    status = envelope.get("api_error_status")
+    if isinstance(status, int):
+        return status in RETRYABLE_STATUSES
+    return bool(_UNREACHABLE.search(message))

@@ -282,6 +282,8 @@ Notes:
 - These artifacts go to a headless LLM session that looks up the disc release, matches each title against it, and writes `plan.json` and `logs/identify.json`.
 - For each title, the plan proposes an action (`feature`, `extra`, `reject`, or `unknown`), a name, a confidence level, and supporting evidence.
 - `--from-log` rebuilds the plan from `logs/identify.json` without calling the LLM again.
+- If an LLM response is unavailable, the disc is held as retryable.
+- If the run produces an unusable plan, the disc is held for manual review.
 
 ### disc-apply
 
