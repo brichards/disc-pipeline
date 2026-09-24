@@ -64,13 +64,30 @@ already correct.
 `disc-apply`'s `--yes` and `--auto` were left alone — they are different in
 kind, not inconsistently named.
 
-## DP-05 — Extract the repeated stage shape — `todo`
+## DP-05 — Extract the repeated stage shape — `done`
 
-`resolve_target` appears in 5 commands, `manifest.load` in 8, and the
-hold/`locks.Busy` preamble verbatim in 5.
+Measured, then declined. The counts were occurrences of a name, not copies of
+code.
 
-Extract only if the result reads better than the copies. Five honest copies
-beat one clever abstraction.
+| Shape | Sites | Distinct forms |
+| --- | --- | --- |
+| `planlib.resolve_target` | 5 | 1 |
+| `locks.hold` / `locks.Busy` | 6 | 6 |
+| `manifest.load` | 12, across 8 commands | 6 |
+
+`resolve_target` is already the extraction: one line, identical at all five
+sites. Three commands follow it with `planlib.load(work_dir)` and then diverge
+on the next line.
+
+No two lock preambles match. They differ on which lock they take, on whether
+the wait is configurable, on whether the guarded call's result is returned or
+captured, and on the message. A helper covering all six takes a parameter per
+difference and reads worse than any one of them.
+
+The largest single `manifest.load` shape is `advance(load(slug))`, at 3 of 12
+sites. Wrapping it saves no lines and adds a second way to spell one
+operation. The remaining five shapes differ in what a missing manifest means:
+skip the directory, fail the command, or start a new one.
 
 ## DP-06 — Simplify the three largest commands — `todo`
 
