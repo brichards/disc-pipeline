@@ -214,17 +214,11 @@ def _revert(plan, media_dir, work_dir, args):
 
 
 def _summary(plan, name):
-    counts = {}
-    for item in plan.get("items", []):
-        counts[item.get("action", "?")] = counts.get(item.get("action", "?"), 0) + 1
     notify.say(f"\n{plan.get('title', name)} ({plan.get('year', '?')})")
-    notify.say("  " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
+    notify.say(f"  {planlib.tally(plan)}")
     if plan.get("disc_notes"):
         notify.say("\n" + plan["disc_notes"])
-    if plan.get("missing_from_rip"):
-        notify.say("\nOn the disc but not ripped:")
-        for missing in plan["missing_from_rip"]:
-            notify.say(f"  - {missing}")
+    notify.not_ripped(plan.get("missing_from_rip"))
 
 
 def _review(plan, work_dir, media_dir, persist=True):

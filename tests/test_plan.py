@@ -51,3 +51,22 @@ def test_outcome_gives_a_name_only_to_what_is_kept():
     declined = {"file": "a.mkv", "action": planlib.FEATURE,
                 "new_name": "Film.mkv", "decision": planlib.DECLINE}
     assert planlib.outcome(declined) == (planlib.REJECT, "")
+
+
+def test_tally_counts_each_proposed_action_in_name_order():
+    plan = {"items": [
+        {"file": "a.mkv", "action": "feature"},
+        {"file": "b.mkv", "action": "extra"},
+        {"file": "c.mkv", "action": "reject"},
+        {"file": "d.mkv", "action": "extra"},
+    ]}
+
+    assert planlib.tally(plan) == "2 extra, 1 feature, 1 reject"
+
+
+def test_tally_marks_an_item_the_agent_gave_no_action():
+    assert planlib.tally({"items": [{"file": "a.mkv"}]}) == "1 ?"
+
+
+def test_tally_of_an_empty_plan_is_empty():
+    assert planlib.tally({}) == ""

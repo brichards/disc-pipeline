@@ -5,6 +5,7 @@ written back into it as the review proceeds, so an interrupted review resumes
 where it stopped rather than starting over.
 """
 
+import collections
 import json
 from pathlib import Path
 
@@ -68,6 +69,12 @@ def load(work_dir):
 
 def save(plan, work_dir):
     jsonfile.write(path_for(work_dir), plan)
+
+
+def tally(plan):
+    """How many items were proposed as each action: "2 extra, 1 feature"."""
+    counts = collections.Counter(item.get("action", "?") for item in plan.get("items", []))
+    return ", ".join(f"{n} {action}" for action, n in sorted(counts.items()))
 
 
 def kept(plan):
