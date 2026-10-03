@@ -39,3 +39,20 @@ def test_advance_slug_clears_a_hold(root):
     manifest.advance_slug("a-disc", manifest.APPLIED)
 
     assert manifest.load("a-disc")["held_reason"] is None
+
+
+def test_queue_dirs_skips_files_and_dotfiles(root):
+    (root / "a-disc").mkdir()
+    (root / "b-disc").mkdir()
+    (root / ".DS_Store").write_bytes(b"")
+    (root / "ledger.jsonl").write_text("")
+    (root / ".hidden-dir").mkdir()
+
+    assert [p.name for p in manifest.queue_dirs()] == ["a-disc", "b-disc"]
+
+
+def test_queue_dirs_is_empty_when_the_root_does_not_exist(root, monkeypatch):
+    """disc-cleanup walked the root without checking; a fresh Mac has none."""
+    monkeypatch.setattr(manifest.config, "ROOT", root / "nowhere")
+
+    assert manifest.queue_dirs() == []

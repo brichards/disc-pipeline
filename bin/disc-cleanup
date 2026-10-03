@@ -67,9 +67,7 @@ def _candidates(target):
     out = []
     names = [target] if target else None
 
-    for path in sorted(config.ROOT.iterdir()):
-        if not path.is_dir() or path.name.startswith("."):
-            continue
+    for path in manifest.queue_dirs():
         if names and path.name not in names and str(path) not in names:
             continue
 

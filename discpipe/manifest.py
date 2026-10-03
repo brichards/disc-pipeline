@@ -67,6 +67,14 @@ def save(data):
     jsonfile.write(path_for(data["slug"]), data)
 
 
+def queue_dirs():
+    """Every rip directory under the queue root, by name."""
+    if not config.ROOT.exists():
+        return []
+    return [path for path in sorted(config.ROOT.iterdir())
+            if path.is_dir() and not path.name.startswith(".")]
+
+
 def all_discs():
     """Every queued disc, oldest first. disc-status and the drainer read this."""
     out = []
