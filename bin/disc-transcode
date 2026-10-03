@@ -120,10 +120,7 @@ def main():
 def _keepers(plan, media_dir):
     """Files that survived review, in the order they should be transcoded."""
     out = []
-    for item in plan.get("items", []):
-        action, new_name = planlib.outcome(item)
-        if action not in (planlib.FEATURE, planlib.EXTRA) or not new_name:
-            continue
+    for item, action, new_name in planlib.kept(plan):
         path = media_dir / new_name
         if not path.exists():
             notify.say(f"  gone  {new_name} (renamed or moved since review)")

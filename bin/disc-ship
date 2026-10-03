@@ -136,14 +136,8 @@ def _ship(plan, work_dir, slug, name, source, destination, promotion, args):
 
 def _unfinished(plan):
     """Kept files that have not finished transcoding."""
-    waiting = []
-    for item in plan.get("items", []):
-        action, new_name = planlib.outcome(item)
-        if action not in (planlib.FEATURE, planlib.EXTRA) or not new_name:
-            continue
-        if item.get("transcode", {}).get("status") != "done":
-            waiting.append(new_name)
-    return waiting
+    return [new_name for item, _, new_name in planlib.kept(plan)
+            if item.get("transcode", {}).get("status") != "done"]
 
 
 def _source(work_dir):

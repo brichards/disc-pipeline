@@ -70,6 +70,17 @@ def save(plan, work_dir):
     jsonfile.write(path_for(work_dir), plan)
 
 
+def kept(plan):
+    """Items that survived review, with the name the review gave them.
+
+    Yields (item, action, new_name).
+    """
+    for item in plan.get("items", []):
+        action, new_name = outcome(item)
+        if action in (FEATURE, EXTRA) and new_name:
+            yield item, action, new_name
+
+
 def pending(plan):
     return [i for i in plan.get("items", []) if not i.get("decision")]
 
