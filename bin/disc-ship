@@ -189,9 +189,8 @@ def _hold(slug, reason, retryable=False, stage=None):
 
 
 def _record_shipped(slug, destination):
-    try:
-        data = manifest.load(slug)
-    except (OSError, ValueError):
+    data = manifest.find(slug)
+    if data is None:
         return
     manifest.advance(data, manifest.SHIPPED)
     # The ledger outlives the queue directory, so where a disc ended up has to

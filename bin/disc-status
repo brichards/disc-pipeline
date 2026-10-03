@@ -68,9 +68,8 @@ def _rows():
 
 
 def _queue_row(path):
-    try:
-        data = manifest.load(path.name)
-    except (OSError, ValueError):
+    data = manifest.find(path.name)
+    if data is None:
         return None
 
     state = data.get("state", "?")

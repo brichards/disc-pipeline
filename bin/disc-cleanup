@@ -78,11 +78,8 @@ def _candidates(target):
 
 
 def _queue_entry(path):
-    try:
-        data = manifest.load(path.name)
-    except (OSError, ValueError):
-        return None
-    if data.get("state") != manifest.SHIPPED:
+    data = manifest.find(path.name)
+    if data is None or data.get("state") != manifest.SHIPPED:
         return None
     if not planlib.path_for(path).exists():
         return None

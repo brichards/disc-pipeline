@@ -62,6 +62,14 @@ def load(slug):
         return json.load(fh)
 
 
+def find(slug):
+    """The manifest for slug, or None if there is no readable one."""
+    try:
+        return load(slug)
+    except (OSError, ValueError):
+        return None
+
+
 def save(data):
     data["updated"] = now()
     jsonfile.write(path_for(data["slug"]), data)
@@ -77,16 +85,10 @@ def queue_dirs():
 
 def all_discs():
     """Every queued disc, oldest first. disc-status and the drainer read this."""
-    out = []
     if not config.ROOT.exists():
-        return out
-    for candidate in sorted(config.ROOT.glob("*/manifest.json")):
-        try:
-            with open(candidate, encoding="utf-8") as fh:
-                out.append(json.load(fh))
-        except (OSError, json.JSONDecodeError):
-            continue
-    return out
+        return []
+    found = (find(p.parent.name) for p in sorted(config.ROOT.glob("*/manifest.json")))
+    return [data for data in found if data is not None]
 
 
 def hold(data, reason, retryable=False, stage=None):
