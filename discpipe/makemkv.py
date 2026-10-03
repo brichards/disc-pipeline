@@ -14,7 +14,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 
-from . import config
+from . import config, proc
 
 # TINFO attributes.
 T_NAME = 2
@@ -226,7 +226,19 @@ def rip(disc, title_index, out_dir, min_length, on_line=None):
     re-reading the disc.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    process = subprocess.Popen(
+    warnings = []
+    transcript = []
+
+    def collect(line):
+        match = _MSG.match(line)
+        rendered = match.group(2) if match else line
+        transcript.append(rendered)
+        if _TROUBLE.search(rendered):
+            warnings.append(rendered)
+        if on_line:
+            on_line(rendered)
+
+    code = proc.stream(
         [
             str(config.MAKEMKVCON),
             "-r",
@@ -237,23 +249,7 @@ def rip(disc, title_index, out_dir, min_length, on_line=None):
             str(title_index),
             str(out_dir),
         ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+        collect,
     )
 
-    warnings = []
-    transcript = []
-    for line in process.stdout:
-        line = line.rstrip()
-        match = _MSG.match(line)
-        rendered = match.group(2) if match else line
-        transcript.append(rendered)
-        if _TROUBLE.search(rendered):
-            warnings.append(rendered)
-        if on_line:
-            on_line(rendered)
-    process.wait()
-
-    return process.returncode, warnings, "\n".join(transcript)
+    return code, warnings, "\n".join(transcript)
