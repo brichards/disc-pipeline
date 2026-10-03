@@ -45,6 +45,10 @@ def say(message):
     print(message, flush=True)
 
 
+def ejected(mount, ok):
+    say(f"Ejected {mount.name}" if ok else f"Could not eject {mount.name}")
+
+
 def fail(message, code=1):
     print(f"error: {message}", file=sys.stderr, flush=True)
     raise SystemExit(code)

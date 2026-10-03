@@ -100,8 +100,7 @@ def _check(args, foreground=False):
     seen = manifest.ledger_find(fingerprint)
     if seen:
         notify.say(f"{label} was already ripped as {seen.get('slug')}.")
-        if disc.eject(mount):
-            notify.say(f"Ejected {label}.")
+        notify.ejected(mount, disc.eject(mount))
         return 0
 
     free = disc.free_bytes(config.ROOT)
