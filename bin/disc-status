@@ -132,8 +132,7 @@ def _progress(path, data, state):
         plan = planlib.load(path)
     except SystemExit:
         return ""
-    kept = [i for i in plan.get("items", [])
-            if planlib.outcome(i)[0] in (planlib.FEATURE, planlib.EXTRA)]
+    kept = [item for item, _, _ in planlib.kept(plan)]
     if state == manifest.IDENTIFIED:
         return f"{len(plan.get('items', []))} file(s) proposed"
     done = sum(1 for i in kept if i.get("transcode", {}).get("status") == "done")
