@@ -133,6 +133,28 @@ deprecated script for behavior the current `transcode-video.rb` already has.
 Check what the rewritten script does with UHD before deciding. Related to
 DP-12, since comb detection sits in the same tool.
 
+## DP-19 — Decide where the watcher's chain should stop — `todo`
+
+`disc-watch` runs `disc-rip && disc-verify && disc-identify` and stops. Only
+the middle link is explained in the code: `disc-verify` is a cheap gate that
+exits non-zero on a file that will not decode, so the `&&` stops identify
+being paid for. Why the chain ends after identify is nowhere recorded.
+
+The boundary holds up on inspection -- `disc-apply` is the first stage that
+stops for a person, and the watcher spawns a detached shell with no stdin to
+answer it -- but it was never a stated decision, so it is not obviously the
+right one.
+
+Appending `disc-run --watch` would work: `disc-run` takes the session lock
+and refuses a second drainer, and the grace period ends it when the queue
+goes quiet. The question is whether inserting a disc should commit the Mac to
+hours of transcoding, which today is an explicit decision and would stop
+being one. `disc-run` with no `--watch` is the middle option -- one pass, so
+discs reviewed earlier move on without being remembered.
+
+Whatever is decided, record it. The README documents the two-step workflow
+without saying why it is two steps.
+
 ## DP-17 — disc-verify should adjudicate a failed title — `todo`
 
 A title that failed only its duration check leaves a file on disk that may
