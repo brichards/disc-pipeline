@@ -112,7 +112,7 @@ def main():
         return 0
 
     notify.say(f"\nApplied {applied} change(s).")
-    manifest.advance(manifest.load(slug), manifest.APPLIED)
+    manifest.advance_slug(slug, manifest.APPLIED)
     return 0
 
 

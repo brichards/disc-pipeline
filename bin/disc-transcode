@@ -189,7 +189,7 @@ def _mark(item, status, destination, seconds=None, code=None):
 def _finish(plan, work_dir, slug, out_dir):
     planlib.save(plan, work_dir)
     notify.say(f"\nReady to ship from {out_dir}")
-    manifest.advance(manifest.load(slug), manifest.TRANSCODED)
+    manifest.advance_slug(slug, manifest.TRANSCODED)
     return 0
 
 

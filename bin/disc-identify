@@ -133,7 +133,7 @@ def _write_plan(plan, name, media_dir, work_dir, slug, files):
     _report(plan)
     notify.say(f"\nPlan: {plan_file}")
     notify.say(f"Review with: disc-apply {slug}")
-    manifest.advance(manifest.load(slug), manifest.IDENTIFIED)
+    manifest.advance_slug(slug, manifest.IDENTIFIED)
     return plan_file
 
 

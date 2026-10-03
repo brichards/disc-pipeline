@@ -115,6 +115,10 @@ def advance(data, state):
     return data
 
 
+def advance_slug(slug, state):
+    return advance(load(slug), state)
+
+
 def subdir(slug, name):
     path = disc_dir(slug) / name
     path.mkdir(parents=True, exist_ok=True)
