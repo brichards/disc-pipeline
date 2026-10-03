@@ -64,13 +64,48 @@ already correct.
 `disc-apply`'s `--yes` and `--auto` were left alone — they are different in
 kind, not inconsistently named.
 
-## DP-05 — Extract the repeated stage shape — `todo`
+## DP-05 — Extract repeated code — `done`
 
-`resolve_target` appears in 5 commands, `manifest.load` in 8, and the
-hold/`locks.Busy` preamble verbatim in 5.
+The item named three shapes and a bar of "five honest copies beat one clever
+abstraction". It ran to a different bar: any code repeated once or more that
+reads better as one function. Every module was scanned, by AST rather than
+text.
 
-Extract only if the result reads better than the copies. Five honest copies
-beat one clever abstraction.
+| Extracted | Sites | Was |
+| --- | --- | --- |
+| `manifest.find` | 4 | Loading a manifest, giving up if it is missing or unreadable |
+| `manifest.advance_slug` | 3 | `advance(load(slug), state)` |
+| `proc.stream` | 3 | MakeMKV, rsync and HandBrake each with their own `Popen` |
+| `jsonfile.write` | 3 | Manifest, plan and overrides each writing to temp and renaming |
+| `notify.ejected` | 3 | Reporting whether the disc came out |
+| `plan.kept` | 3 | Folding in the decision, keeping named features and extras |
+| `manifest.queue_dirs` | 2 | Walking the queue root, skipping dotfiles |
+| `notify.human_duration` | 2 | `probe._hms` had an identical body |
+| `probe._ffmpeg` | 2 | Quiet ffmpeg, success measured by whether the file appeared |
+| `plan.tally` | 2 | Counting proposed actions for a report header |
+| `notify.not_ripped` | 2 | Listing the titles the rip missed |
+
+| Declined | Sites | Why |
+| --- | --- | --- |
+| `planlib.resolve_target` | 5 | Already the extraction |
+| `locks.hold` / `locks.Busy` | 6 | Six distinct forms; a helper takes a parameter per difference |
+| `_progress` callbacks | 2 | Differ only in indent; a helper needs a lambda at each site |
+| `out_dir` / `destination` setup in `transcode.py` | 2 | Saves two lines for a function that both creates a directory and returns a path |
+| `label` / `slug` / `ledger_find` | 2 | Two self-evident assignments and a call that is already named |
+| `disc-ship._hold` | 1 | Looks like `manifest.find`, but its guard also covers the save |
+
+Four defects surfaced, all in code nothing covered:
+
+- `disc-cleanup` walked the queue root without checking it existed, and
+  raised on a Mac that had never ripped a disc.
+- `disc-watch` reported an eject only when it worked, so a disc the drive
+  would not release left no trace.
+- `disc-status` counted features and extras that review left unnamed, which
+  `disc-transcode` skips, so a disc in that state showed a transcode count
+  that could never complete.
+- `makemkv.rip`'s warning collection had no test. Removing
+  `warnings.append` left the suite green, on the one signal that tells a
+  glitched rip from a clean one.
 
 ## DP-06 — Simplify the three largest commands — `todo`
 
@@ -79,6 +114,15 @@ beat one clever abstraction.
 Includes the prose pass: delete comments failing the Standards bar, and the
 27 one-line functions that add no meaning. `_free()` in disc-cleanup and the
 9-line `MIN_TITLE_LENGTH` comment in config.py are the reference cases.
+
+Carried over from DP-05:
+
+- `disc-cleanup`'s three `_offer_*` functions share a prelude (path, exists,
+  size) and a postlude (dry run, ask, delete).
+- `resolve_target` returns a four-tuple, and three commands follow it with
+  `planlib.load`. A `Target` object would replace both; a five-tuple would
+  not.
+- `bin/disc-apply` imports `config` and never uses it.
 
 ## DP-07 — Rewrite the README — `done`
 
