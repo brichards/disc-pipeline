@@ -11,6 +11,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from . import notify
+
 # Frames per contact sheet, and the grid they are tiled into.
 # The head window has to clear the studio logo before the title card appears.
 # 75 seconds at 3-second intervals: a card typically holds for 3-5 seconds, and
@@ -55,7 +57,7 @@ def ffprobe(path):
     return {
         "file": path.name,
         "seconds": round(seconds, 2),
-        "duration": _hms(seconds),
+        "duration": notify.human_duration(seconds),
         "width": video[0].get("width") if video else None,
         "height": video[0].get("height") if video else None,
         "audio_tracks": len(audio),
@@ -71,12 +73,6 @@ def ffprobe(path):
         "subtitle_tracks": len(subs),
         "size_bytes": path.stat().st_size,
     }
-
-
-def _hms(seconds):
-    hours, rest = divmod(int(seconds), 3600)
-    minutes, secs = divmod(rest, 60)
-    return f"{hours}:{minutes:02d}:{secs:02d}"
 
 
 def _ffmpeg(args, out):

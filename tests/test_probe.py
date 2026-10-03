@@ -55,3 +55,19 @@ def test_grab_seeks_before_the_input(monkeypatch, tmp_path):
 
     argv = seen["argv"]
     assert argv.index("-ss") < argv.index("-i")
+
+
+def test_ffprobe_reports_the_runtime_both_ways(monkeypatch, tmp_path):
+    """Seconds for comparing against the scan; H:MM:SS for people and the agent."""
+    report = ('{"format": {"duration": "5875.269000"},'
+              ' "streams": [{"codec_type": "video", "width": 720, "height": 480}]}')
+    monkeypatch.setattr(probe.subprocess, "run",
+                        lambda argv, **kw: subprocess.CompletedProcess(argv, 0, stdout=report, stderr=""))
+
+    ripped = tmp_path / "Men In Black-01.mkv"
+    ripped.write_bytes(b"mkv")
+
+    info = probe.ffprobe(ripped)
+
+    assert info["seconds"] == 5875.27
+    assert info["duration"] == "1:37:55"
