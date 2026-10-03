@@ -7,11 +7,9 @@ copies of a state machine drift and then you are debugging which one lied.
 """
 
 import json
-import os
 import time
-from pathlib import Path
 
-from . import config
+from . import config, jsonfile
 
 VERSION = 1
 
@@ -65,15 +63,8 @@ def load(slug):
 
 
 def save(data):
-    """Write atomically so an interrupted save can't truncate the manifest."""
     data["updated"] = now()
-    target = path_for(data["slug"])
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-        fh.write("\n")
-    os.replace(tmp, target)
+    jsonfile.write(path_for(data["slug"]), data)
 
 
 def all_discs():
@@ -165,9 +156,5 @@ def overrides_set(fingerprint, playlist, note=""):
     data = overrides_load()
     data[fingerprint] = {"playlist": playlist, "note": note, "recorded": now()}
     config.ensure_root()
-    tmp = Path(str(config.OVERRIDES) + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-        fh.write("\n")
-    os.replace(tmp, config.OVERRIDES)
+    jsonfile.write(config.OVERRIDES, data)
     return data

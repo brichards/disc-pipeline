@@ -6,10 +6,9 @@ where it stopped rather than starting over.
 """
 
 import json
-import os
 from pathlib import Path
 
-from . import adopt as adoptlib, config, notify
+from . import adopt as adoptlib, config, jsonfile, notify
 
 # What disc-identify proposed.
 FEATURE = "feature"
@@ -68,13 +67,7 @@ def load(work_dir):
 
 
 def save(plan, work_dir):
-    """Atomic, because this is rewritten after every keystroke during review."""
-    target = path_for(work_dir)
-    tmp = target.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(plan, fh, indent=2)
-        fh.write("\n")
-    os.replace(tmp, target)
+    jsonfile.write(path_for(work_dir), plan)
 
 
 def pending(plan):
