@@ -145,7 +145,8 @@ def _source(work_dir):
     root = work_dir / "transcoded"
     if not root.is_dir():
         return None
-    folders = [p for p in root.iterdir() if p.is_dir()]
+    folders = [p for p in root.iterdir()
+               if p.is_dir() and not p.name.startswith(".")]
     if folders:
         return folders[0]
     files = sorted(p for p in root.glob("*.mkv") if p.is_file())
