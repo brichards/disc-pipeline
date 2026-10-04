@@ -52,6 +52,18 @@ Two meanings, one name each:
 - `--redo` repeats work already marked done.
 - `--force` overrides a refusal.
 
+## This checkout runs the pipeline
+
+`PATH` and the `disc-watch` LaunchAgent run `bin/` from this directory, and
+`disc-run` starts every stage from it while a session is open. Anything changed
+here reaches a running pipeline.
+
+- Keep this checkout on `main`. Do branch work in a git worktree, and remove it
+  once the branch merges.
+- Mutate code to check a test in a worktree, never here.
+- Pull `main` only when no stage is running: no `bin/disc-*`, `makemkvcon` or
+  `HandBrakeCLI` process.
+
 ## Git
 
 - One thought per commit, one branch per change.
