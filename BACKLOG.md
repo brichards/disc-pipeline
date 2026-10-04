@@ -177,34 +177,27 @@ deprecated script for behavior the current `transcode-video.rb` already has.
 Check what the rewritten script does with UHD before deciding. Related to
 DP-12, since comb detection sits in the same tool.
 
-## DP-19 — Decide where the watcher's chain should stop — `todo`
+## DP-19 — The watcher starts the drainer — `todo`
 
-`disc-watch` runs `disc-rip && disc-verify && disc-identify` and stops. Only
-the middle link is explained in the code: `disc-verify` is a cheap gate that
-exits non-zero on a file that will not decode, so the `&&` stops identify
-being paid for. Why the chain ends after identify is nowhere recorded.
+Decided 2026-10-04: an inserted disc moves through every stage on its own unless
+something blocks it. `disc-watch` starts `disc-run --watch` and nothing else.
+Its rip, verify and identify chain duplicated three of the drainer's stages
+without the drainer's locks or keep-awake, and stopped before the stages that
+take longest.
 
-The boundary holds up on inspection -- `disc-apply` is the first stage that
-stops for a person, and the watcher spawns a detached shell with no stdin to
-answer it -- but it was never a stated decision, so it is not obviously the
-right one.
+- The drainer rips a disc it does not know yet by running `disc-rip` itself.
+  Handing it to `disc-watch` would start a second drainer, which exits on the
+  session lock, and the disc would never rip.
+- A stage run by hand starts the drainer when it succeeds, so clearing a block
+  -- a review, a decoy, a cleaned disc -- carries on without being remembered.
+  The session lock makes that a no-op when a drainer is already running.
+- The drainer's `caffeinate` covers the whole run. That closes the gap where a
+  rip the watcher started had nothing keeping the Mac awake; on 2026-10-04 a
+  Blu-ray rip lost its only keep-awake when the drainer stopped partway through.
+- The README's two-step workflow becomes one step.
 
-Appending `disc-run --watch` would work: `disc-run` takes the session lock
-and refuses a second drainer, and the grace period ends it when the queue
-goes quiet. The question is whether inserting a disc should commit the Mac to
-hours of transcoding, which today is an explicit decision and would stop
-being one. `disc-run` with no `--watch` is the middle option -- one pass, so
-discs reviewed earlier move on without being remembered.
-
-Whatever is decided, record it. The README documents the two-step workflow
-without saying why it is two steps.
-
-The chain also never keeps the Mac awake. Only `disc-run` does, with
-`caffeinate -i -w` on its own PID, so a rip the watcher starts while no
-drainer is running can be cut short by idle sleep. On 2026-10-04 a Blu-ray
-rip lost its only keep-awake when the drainer was stopped partway through.
-Wherever the chain ends up stopping, the watcher should hold its own
-assertion for as long as it runs.
+Needs DP-21 and DP-23 first, or a drainer started on every insert spins on the
+first block it meets.
 
 ## DP-17 — disc-verify should adjudicate a failed title — `todo`
 
@@ -217,10 +210,14 @@ at a failed title. Decode it; on a clean result promote it to done, recording
 that a person asked. Decoding proves the file is intact, not that it is the
 title that was asked for, so this stays explicit rather than automatic.
 
-## DP-18 — disc-rip points at a command that does not exist — `todo`
+## DP-18 — Resolving a decoy disc means editing JSON by hand — `todo`
 
-`bin/disc-rip:121` tells you to run `disc-resolve <slug>` for a decoy disc.
-There is no such command. Either write it or say what to do instead.
+`disc-rip` holds a decoy disc and tells you to run `disc-resolve <slug>`, which
+does not exist. Underneath, `manifest.overrides_set` records which playlist to
+rip, and nothing calls it, so the only way through is editing `overrides.json`.
+
+`disc-rip <slug> --playlist 00800.mpls` should record the override and rip.
+Same branch as DP-21, which gives `disc-rip` its slug.
 
 ## DP-16 — Survive a transient agent failure — `done`
 
@@ -243,3 +240,45 @@ that fails as a unit.
 ## DP-14 — Evaluate a GUI — `todo`
 
 Parked. Swift, for people who do not want a terminal.
+
+## DP-20 — A killed transcode can ship truncated — `todo`
+
+The transcoders write straight to the final name in `transcoded/`. Kill one
+partway through and the truncated file keeps that name: the next
+`disc-transcode` reports it as already there, marks it done, and `disc-ship`
+sends it to the library. Nothing anywhere says it is short.
+
+Transcode into a staging directory, and move a file into place only once the
+transcoder exits cleanly. `ship.py` does the same for rsync with
+`--partial-dir`.
+
+## DP-21 — The drainer cannot retry a rip — `todo`
+
+`disc-run` starts every stage as `<stage> <slug>`, and `disc-rip` takes no
+target, so it exits on an argument error. Both of the drainer's paths to
+`disc-rip` fail this way -- retrying a hold for disk space, and resuming a disc
+left `queued` by an interrupted rip -- and have since the drainer was added. On
+2026-10-04 one held Blu-ray drew over 300 failed launches, one per pass, and
+the drainer never went idle.
+
+`disc-rip` should take an optional slug, and rip only when that disc is the one
+in the drive. Same branch as DP-18, which adds a flag to the same command.
+
+## DP-22 — Sizes are GiB labelled GB — `todo`
+
+`notify.human_bytes` divides by 1024 and labels the result GB, so every size the
+pipeline prints reads about 7% below Finder's for the same bytes. A disc held
+as needing "42.3 GB" needed 45.4 GB by Finder's count. Divide by 1000, as Finder
+does.
+
+## DP-23 — The drainer spins on a refusal — `todo`
+
+The drainer relaunches any stage that exits non-zero without changing the
+disc's state, every pass. `disc-apply --auto` refuses a plan that is not
+unanimously high confidence by exiting 1 and leaves the disc `identified`, so a
+disc waiting for review is offered to it again every 30 seconds -- 20 times in a
+row for Men in Black 3, with the Mac held awake throughout. A code comment calls
+this a gate; `GATES` does not include it.
+
+A refusal should hold the disc for review, and the drainer should not relaunch
+a stage that failed until the disc's state has changed.
