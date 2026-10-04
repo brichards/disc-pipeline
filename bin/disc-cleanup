@@ -67,9 +67,7 @@ def _candidates(target):
     out = []
     names = [target] if target else None
 
-    for path in sorted(config.ROOT.iterdir()):
-        if not path.is_dir() or path.name.startswith("."):
-            continue
+    for path in manifest.queue_dirs():
         if names and path.name not in names and str(path) not in names:
             continue
 
@@ -80,11 +78,8 @@ def _candidates(target):
 
 
 def _queue_entry(path):
-    try:
-        data = manifest.load(path.name)
-    except (OSError, ValueError):
-        return None
-    if data.get("state") != manifest.SHIPPED:
+    data = manifest.find(path.name)
+    if data is None or data.get("state") != manifest.SHIPPED:
         return None
     if not planlib.path_for(path).exists():
         return None

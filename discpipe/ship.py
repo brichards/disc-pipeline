@@ -9,6 +9,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from . import proc
+
 # Preserve times but not permissions or ownership: SMB cannot honour them, and
 # asking makes rsync noisy about failures that do not matter.
 #
@@ -106,18 +108,9 @@ def transfer(source, destination, on_line=None):
         args = [str(source), str(destination)]
         destination.parent.mkdir(parents=True, exist_ok=True)
 
-    process = subprocess.Popen(
-        ["rsync", *TRANSFER_ARGS, "--info=progress2", *args],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+    return proc.stream(
+        ["rsync", *TRANSFER_ARGS, "--info=progress2", *args], on_line
     )
-    for line in process.stdout:
-        if on_line:
-            on_line(line.rstrip())
-    process.wait()
-    return process.returncode
 
 
 def verify(source, destination):

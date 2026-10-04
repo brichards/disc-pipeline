@@ -303,10 +303,7 @@ def _merge_titles(previous, candidates):
 def _eject(mount, args):
     if args.no_eject or args.dry_run:
         return
-    if disc.eject(mount):
-        notify.say(f"Ejected {mount.name}")
-    else:
-        notify.say(f"Could not eject {mount.name}")
+    notify.ejected(mount, disc.eject(mount))
 
 
 def _park(data, reason, mount, args, retryable=False, stage=None):

@@ -8,8 +8,9 @@ refusal is what makes a re-run resumable: finished files are simply skipped.
 
 import os
 import shutil
-import subprocess
 from pathlib import Path
+
+from . import proc
 
 SD_HD = "transcode-video.rb"  # 1080p and below
 UHD = "hevc-transcode.rb"  # above 1080p
@@ -83,16 +84,9 @@ def run(source, out_dir, script, extra_args=(), on_line=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     destination = output_for(source, out_dir)
 
-    process = subprocess.Popen(
+    code = proc.stream(
         build_command(Path(source).resolve(), script, extra_args),
-        cwd=str(out_dir),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+        on_line,
+        cwd=out_dir,
     )
-    for line in process.stdout:
-        if on_line:
-            on_line(line.rstrip())
-    process.wait()
-    return process.returncode, destination
+    return code, destination

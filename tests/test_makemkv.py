@@ -21,21 +21,17 @@ def capture_scan(monkeypatch):
     return seen
 
 
-def capture_rip(monkeypatch):
+def capture_rip(monkeypatch, lines=()):
     seen = {}
 
-    class FakeProcess:
-        stdout = iter(())
-        returncode = 0
+    def fake_stream(command, on_line=None, cwd=None):
+        seen["argv"] = command
+        for line in lines:
+            if on_line:
+                on_line(line)
+        return 0
 
-        def wait(self):
-            return 0
-
-    def fake_popen(argv, **kwargs):
-        seen["argv"] = argv
-        return FakeProcess()
-
-    monkeypatch.setattr(makemkv.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(makemkv.proc, "stream", fake_stream)
     return seen
 
 
@@ -73,3 +69,28 @@ def test_scan_defaults_to_the_configured_minimum(monkeypatch):
     makemkv.scan()
 
     assert minlength_of(scanned["argv"]) == config.MIN_TITLE_LENGTH
+
+
+def test_rip_collects_the_read_problems_makemkv_works_around(monkeypatch, tmp_path):
+    """A clean exit code is not a clean rip -- Men in Black exited zero."""
+    corrupt = ("The source file '/VIDEO_TS/VTS_07_1.VOB' is corrupt or invalid "
+               "at offset 36864, attempting to work around")
+    capture_rip(monkeypatch, lines=[
+        f'MSG:2003,0,3,"{corrupt}","x","y"',
+        'MSG:5036,0,1,"Copy complete. 1 titles saved.","x","y"',
+    ])
+
+    code, warnings, transcript = makemkv.rip(0, 1, tmp_path / "raw", min_length=240)
+
+    assert code == 0
+    assert warnings == [corrupt]
+    assert "Copy complete. 1 titles saved." in transcript
+
+
+def test_rip_keeps_a_quiet_run_free_of_warnings(monkeypatch, tmp_path):
+    capture_rip(monkeypatch, lines=['MSG:5036,0,1,"Copy complete.","x","y"'])
+
+    _, warnings, transcript = makemkv.rip(0, 1, tmp_path / "raw", min_length=240)
+
+    assert warnings == []
+    assert transcript == "Copy complete."

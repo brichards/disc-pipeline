@@ -136,14 +136,8 @@ def _ship(plan, work_dir, slug, name, source, destination, promotion, args):
 
 def _unfinished(plan):
     """Kept files that have not finished transcoding."""
-    waiting = []
-    for item in plan.get("items", []):
-        action, new_name = planlib.outcome(item)
-        if action not in (planlib.FEATURE, planlib.EXTRA) or not new_name:
-            continue
-        if item.get("transcode", {}).get("status") != "done":
-            waiting.append(new_name)
-    return waiting
+    return [new_name for item, _, new_name in planlib.kept(plan)
+            if item.get("transcode", {}).get("status") != "done"]
 
 
 def _source(work_dir):
@@ -195,9 +189,8 @@ def _hold(slug, reason, retryable=False, stage=None):
 
 
 def _record_shipped(slug, destination):
-    try:
-        data = manifest.load(slug)
-    except (OSError, ValueError):
+    data = manifest.find(slug)
+    if data is None:
         return
     manifest.advance(data, manifest.SHIPPED)
     # The ledger outlives the queue directory, so where a disc ended up has to

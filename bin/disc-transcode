@@ -120,10 +120,7 @@ def main():
 def _keepers(plan, media_dir):
     """Files that survived review, in the order they should be transcoded."""
     out = []
-    for item in plan.get("items", []):
-        action, new_name = planlib.outcome(item)
-        if action not in (planlib.FEATURE, planlib.EXTRA) or not new_name:
-            continue
+    for item, action, new_name in planlib.kept(plan):
         path = media_dir / new_name
         if not path.exists():
             notify.say(f"  gone  {new_name} (renamed or moved since review)")
@@ -189,7 +186,7 @@ def _mark(item, status, destination, seconds=None, code=None):
 def _finish(plan, work_dir, slug, out_dir):
     planlib.save(plan, work_dir)
     notify.say(f"\nReady to ship from {out_dir}")
-    manifest.advance(manifest.load(slug), manifest.TRANSCODED)
+    manifest.advance_slug(slug, manifest.TRANSCODED)
     return 0
 
 

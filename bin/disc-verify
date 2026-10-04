@@ -149,10 +149,7 @@ def _eject_if_still_ours(data):
                 continue
         except (OSError, ValueError):
             continue
-        if disc.eject(mount):
-            notify.say(f"Ejected {mount.name}")
-        else:
-            notify.say(f"Could not eject {mount.name}")
+        notify.ejected(mount, disc.eject(mount))
         return
 
 

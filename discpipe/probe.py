@@ -11,6 +11,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from . import notify
+
 # Frames per contact sheet, and the grid they are tiled into.
 # The head window has to clear the studio logo before the title card appears.
 # 75 seconds at 3-second intervals: a card typically holds for 3-5 seconds, and
@@ -55,7 +57,7 @@ def ffprobe(path):
     return {
         "file": path.name,
         "seconds": round(seconds, 2),
-        "duration": _hms(seconds),
+        "duration": notify.human_duration(seconds),
         "width": video[0].get("width") if video else None,
         "height": video[0].get("height") if video else None,
         "audio_tracks": len(audio),
@@ -73,10 +75,14 @@ def ffprobe(path):
     }
 
 
-def _hms(seconds):
-    hours, rest = divmod(int(seconds), 3600)
-    minutes, secs = divmod(rest, 60)
-    return f"{hours}:{minutes:02d}:{secs:02d}"
+def _ffmpeg(args, out):
+    """Run ffmpeg quietly. Returns whether it produced the file it was asked for."""
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", *args, str(out)],
+        capture_output=True,
+        check=False,
+    )
+    return out.exists()
 
 
 def _grab(path, timestamp, out):
@@ -85,21 +91,14 @@ def _grab(path, timestamp, out):
     -ss before -i is input seeking: near-instant even on a 20 GB file, because
     it never decodes the frames it skips.
     """
-    subprocess.run(
-        [
-            "ffmpeg", "-v", "error", "-y",
-            "-ss", f"{timestamp:.2f}",
-            "-i", str(path),
-            "-frames:v", "1",
-            "-vf",
-            f"scale={THUMB_W}:{THUMB_H}:force_original_aspect_ratio=decrease,"
-            f"pad={THUMB_W}:{THUMB_H}:(ow-iw)/2:(oh-ih)/2",
-            str(out),
-        ],
-        capture_output=True,
-        check=False,
-    )
-    return out.exists()
+    return _ffmpeg([
+        "-ss", f"{timestamp:.2f}",
+        "-i", str(path),
+        "-frames:v", "1",
+        "-vf",
+        f"scale={THUMB_W}:{THUMB_H}:force_original_aspect_ratio=decrease,"
+        f"pad={THUMB_W}:{THUMB_H}:(ow-iw)/2:(oh-ih)/2",
+    ], out)
 
 
 def _sheet(path, timestamps, grid, out):
@@ -112,19 +111,12 @@ def _sheet(path, timestamps, grid, out):
                 kept += 1
         if not kept:
             return False
-        subprocess.run(
-            [
-                "ffmpeg", "-v", "error", "-y",
-                "-framerate", "1",
-                "-i", str(tmp / "f%03d.png"),
-                "-vf", f"tile={grid}",
-                "-frames:v", "1",
-                str(out),
-            ],
-            capture_output=True,
-            check=False,
-        )
-    return out.exists()
+        return _ffmpeg([
+            "-framerate", "1",
+            "-i", str(tmp / "f%03d.png"),
+            "-vf", f"tile={grid}",
+            "-frames:v", "1",
+        ], out)
 
 
 def contact_sheets(path, seconds, out_dir):
