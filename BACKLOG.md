@@ -199,6 +199,13 @@ discs reviewed earlier move on without being remembered.
 Whatever is decided, record it. The README documents the two-step workflow
 without saying why it is two steps.
 
+The chain also never keeps the Mac awake. Only `disc-run` does, with
+`caffeinate -i -w` on its own PID, so a rip the watcher starts while no
+drainer is running can be cut short by idle sleep. On 2026-10-04 a Blu-ray
+rip lost its only keep-awake when the drainer was stopped partway through.
+Wherever the chain ends up stopping, the watcher should hold its own
+assertion for as long as it runs.
+
 ## DP-17 — disc-verify should adjudicate a failed title — `todo`
 
 A title that failed only its duration check leaves a file on disk that may
