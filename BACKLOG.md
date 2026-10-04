@@ -130,16 +130,18 @@ path discarded in favour of an empty stderr. It now reads the envelope either
 way, and holds a run that never reached a verdict as retryable against the
 identify stage, so the drainer picks the disc back up once the cause clears.
 
-## DP-20 — A killed transcode can ship truncated — `todo`
+## DP-20 — A killed transcode can ship truncated — `done`
 
-The transcoders write straight to the final name in `transcoded/`. Kill one
-partway through and the truncated file keeps that name: the next
-`disc-transcode` reports it as already there, marks it done, and `disc-ship`
-sends it to the library. Nothing anywhere says it is short.
+The transcoders wrote straight to the final name in `transcoded/`. Killed
+partway, the truncated file kept that name: the next `disc-transcode` reported
+it as already there, marked it done, and `disc-ship` sent it to the library.
 
-Transcode into a staging directory, and move a file into place only once the
-transcoder exits cleanly. `ship.py` does the same for rsync with
-`--partial-dir`.
+They now write into `transcoded/.disc-pipeline-partial/`, the hidden name rsync
+already uses for its own partial transfers, and a file moves into place only
+once the transcoder exits cleanly. `disc-ship` skips hidden directories when it
+looks for the movie folder, so even `--force` mid-transcode cannot take staging
+for the movie. As a side effect `--redo` works on a file that already has
+output; the transcoder used to refuse.
 
 ## DP-21 — The drainer cannot retry a rip — `todo`
 

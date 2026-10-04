@@ -68,7 +68,8 @@ def main():
         done = keeper["item"].get("transcode", {}).get("status") == "done"
 
         if transcode.already_encoded(info) and not destination.exists():
-            landed = transcode.adopt_encoded(source, out_dir)
+            landed = transcode.adopt_encoded(
+                source, out_dir, transcode.staging_for(work_dir))
             _mark(keeper["item"], "done", landed)
             notify.say(f"  keep  {source.name}  "
                        f"(already {transcode.TARGET_AUDIO}, linked not re-encoded)")
@@ -153,7 +154,7 @@ def _transcode_all(todo, out_dir, plan, work_dir, args):
         started = time.time()
 
         code, destination = transcode.run(
-            source, out_dir, script,
+            source, out_dir, script, transcode.staging_for(work_dir),
             on_line=None if args.quiet else _progress,
         )
         elapsed = int(time.time() - started)
