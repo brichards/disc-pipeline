@@ -53,7 +53,7 @@ UNATTENDED = {
 }
 
 # Naming applies itself when the plan is unanimously high confidence.
-# disc-apply --auto refuses anything less and leaves the disc for review, so
+# disc-apply --auto refuses anything less and holds the disc for review, so
 # this is a gate exactly when there is something worth looking at.
 AUTO_APPLY_ACTION = ("disc-apply", locks.CPU)
 
