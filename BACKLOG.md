@@ -178,6 +178,15 @@ disc's state changes. A retryable hold -- disk space, the NAS, the agent -- is
 tried every 10 minutes instead of every pass, and the session stays open while
 one waits, so the disc resumes once the cause clears.
 
+## DP-25 — disc-apply crashes on a rip that never decoded clean — `done`
+
+From 2026-08-24 (`bda8af9`), `disc-apply` raised `NameError` on any disc whose
+rip had read errors and had not been verified clean: a refactor turned the
+manifest load into a one-liner and left the line below still reading the
+variable it removed. It went unnoticed because such a disc is held by
+`disc-verify` first. On 2026-10-05 a disc was pushed past that hold on
+purpose, and the crash would have stopped it at review.
+
 ## DP-22 — Sizes are GiB labelled GB — `todo`
 
 `notify.human_bytes` divides by 1024 and labels the result GB, so every size the

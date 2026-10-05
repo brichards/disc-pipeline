@@ -123,7 +123,8 @@ def _suspect_warning(slug):
     """MakeMKV works around unreadable sectors and still exits clean, so a
     suspect rip reaches this gate looking exactly like a good one. Say it
     loudly here, because this is the last point before hours of transcoding."""
-    rip = manifest.load(slug).get("rip", {})
+    data = manifest.load(slug)
+    rip = data.get("rip", {})
     if not rip.get("suspect"):
         return
     if rip.get("verified"):
