@@ -62,10 +62,11 @@ def fail(message, code=1):
 
 
 def human_bytes(n):
+    """Decimal units, as Finder counts them."""
     for unit in ("B", "KB", "MB", "GB", "TB"):
-        if abs(n) < 1024 or unit == "TB":
+        if abs(n) < 1000 or unit == "TB":
             return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
-        n /= 1024
+        n /= 1000
     return f"{n:.1f} TB"
 
 

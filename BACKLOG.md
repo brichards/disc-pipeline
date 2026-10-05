@@ -187,12 +187,13 @@ variable it removed. It went unnoticed because such a disc is held by
 `disc-verify` first. On 2026-10-05 a disc was pushed past that hold on
 purpose, and the crash would have stopped it at review.
 
-## DP-22 — Sizes are GiB labelled GB — `todo`
+## DP-22 — Sizes are GiB labelled GB — `done`
 
-`notify.human_bytes` divides by 1024 and labels the result GB, so every size the
-pipeline prints reads about 7% below Finder's for the same bytes. A disc held
-as needing "42.3 GB" needed 45.4 GB by Finder's count. Divide by 1000, as Finder
-does.
+`notify.human_bytes` divided by 1024 and labelled the result GB, so every size
+the pipeline printed read about 7% below Finder's for the same bytes. A disc
+held as needing "42.3 GB" needed 45.4 GB by Finder's count. Sizes now count in
+decimal units, as Finder does, and so does the 10 GB of headroom a rip
+reserves. The space check always compared bytes, and is unchanged.
 
 ## DP-17 — disc-verify should adjudicate a failed title — `todo`
 

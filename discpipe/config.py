@@ -40,7 +40,7 @@ MAKEMKVCON = Path("/Applications/MakeMKV.app/Contents/MacOS/makemkvcon")
 MIN_TITLE_LENGTH = 240
 
 # Free space required before a rip: MakeMKV's own size estimate plus headroom.
-SPACE_HEADROOM_BYTES = 10 * 1024**3
+SPACE_HEADROOM_BYTES = 10 * 1000**3
 
 # Session polling interval, in seconds.
 POLL_INTERVAL = 30
