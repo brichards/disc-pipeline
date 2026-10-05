@@ -133,7 +133,7 @@ The session polls every 30 seconds, starts stages as their resources free up, an
 To check pipeline progress, call `disc-status`:
 
 ```
-~/Movies/Rips    150.2 GB free
+~/Movies/Rips    150.2 GB available
 
    sample-movie-f49b43   applied    4/10 transcoded
                          -> disc-transcode sample-movie-f49b43
@@ -359,7 +359,7 @@ Notes:
 
 ### disc-status
 
-Lists the current stage, progress, and next command or hold reason for every disc in the pipeline. Also reports remaining free space in pipeline root.
+Lists the current stage, progress, and next command or hold reason for every disc in the pipeline. Also reports the space available in the pipeline root, counted as Finder counts it.
 
 ```
 disc-status

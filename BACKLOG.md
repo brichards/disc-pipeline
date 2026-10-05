@@ -193,7 +193,15 @@ purpose, and the crash would have stopped it at review.
 the pipeline printed read about 7% below Finder's for the same bytes. A disc
 held as needing "42.3 GB" needed 45.4 GB by Finder's count. Sizes now count in
 decimal units, as Finder does, and so does the 10 GB of headroom a rip
-reserves. The space check always compared bytes, and is unchanged.
+reserves.
+
+The space check compared the right bytes against the wrong figure: free
+space, where Finder shows available space -- free plus what macOS purges on
+demand for something the user asked for. The pipeline could hold a disc that
+Finder showed room for. It now reads Finder's figure from Foundation, and
+says "available" where it said "free". A rip can now outrun macOS freeing
+purgeable space; the 10 GB headroom is the buffer, and a title that fails
+that way leaves the disc held for a re-rip.
 
 ## DP-17 — disc-verify should adjudicate a failed title — `todo`
 

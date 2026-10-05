@@ -37,8 +37,8 @@ def main():
         print(json.dumps(rows, indent=2))
         return 0
 
-    free = disc.free_bytes(config.ROOT)
-    notify.say(f"\n{config.ROOT}    {notify.human_bytes(free)} free")
+    available = disc.available_bytes(config.ROOT)
+    notify.say(f"\n{config.ROOT}    {notify.human_bytes(available)} available")
 
     if not rows:
         notify.say("\n  Queue is empty.")
