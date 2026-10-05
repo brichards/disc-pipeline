@@ -143,17 +143,16 @@ looks for the movie folder, so even `--force` mid-transcode cannot take staging
 for the movie. As a side effect `--redo` works on a file that already has
 output; the transcoder used to refuse.
 
-## DP-21 — The drainer cannot retry a rip — `todo`
+## DP-21 — The drainer cannot retry a rip — `done`
 
-`disc-run` starts every stage as `<stage> <slug>`, and `disc-rip` takes no
-target, so it exits on an argument error. Both of the drainer's paths to
-`disc-rip` fail this way -- retrying a hold for disk space, and resuming a disc
-left `queued` by an interrupted rip -- and have since the drainer was added. On
-2026-10-04 one held Blu-ray drew over 300 failed launches, one per pass, and
-the drainer never went idle.
+`disc-run` starts every stage as `<stage> <slug>`, and `disc-rip` took no
+target, so it exited on an argument error. Both of the drainer's paths to
+`disc-rip` failed this way -- retrying a hold for disk space, and resuming a
+disc left `queued` by an interrupted rip -- from the day the drainer was added.
+On 2026-10-04 one held Blu-ray drew over 300 failed launches.
 
-`disc-rip` should take an optional slug, and rip only when that disc is the one
-in the drive. Same branch as DP-18, which adds a flag to the same command.
+`disc-rip` takes an optional slug and rips only that disc, if it is in the
+drive. A test now checks that every stage the drainer starts accepts one.
 
 ## DP-18 — Resolving a decoy disc means editing JSON by hand — `todo`
 

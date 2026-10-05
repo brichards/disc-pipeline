@@ -19,6 +19,8 @@ from discpipe import config, disc, locks, makemkv, manifest, notify, probe, tria
 
 def main():
     parser = argparse.ArgumentParser(description="Rip a disc into the queue.")
+    parser.add_argument("target", nargs="?", default=None,
+                        help="queue slug; rip only that disc, if it is in the drive")
     parser.add_argument("--disc", type=int, default=0, help="MakeMKV drive index")
     parser.add_argument("--force", action="store_true", help="re-rip a known disc")
     parser.add_argument("--dry-run", action="store_true", help="scan and triage only")
@@ -37,6 +39,10 @@ def main():
         notify.fail(str(exc))
 
     discs = disc.find_discs()
+    if args.target:
+        discs = [d for d in discs if _slug(*d) == args.target]
+        if not discs:
+            notify.fail(f"{args.target} is not the disc in the drive")
     if not discs:
         # The one "no disc" that still looks like a disc in Finder. Say so,
         # or the drive appears loaded and the pipeline appears wrong.
@@ -53,6 +59,13 @@ def main():
     except locks.Busy as exc:
         notify.say(f"{exc} -- another rip is in progress.")
         return 0
+
+
+def _slug(mount, kind):
+    try:
+        return disc.slugify(mount.name, disc.fingerprint(mount, kind))
+    except (OSError, ValueError):
+        return None
 
 
 def _run(args, discs):

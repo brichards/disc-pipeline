@@ -208,6 +208,7 @@ Scans the disc, rips every title above the configured minimum length, and ejects
 
 ```
 disc-rip
+disc-rip men-in-black-f1bb84
 disc-rip --dry-run
 disc-rip --redo
 ```
@@ -226,6 +227,7 @@ Notes:
 - Ripping continues through every title even if one fails.
 - Running `disc-rip` again retries only the failed titles; `--redo` re-rips every title.
 - A rip with read errors stays in the drive until `disc-verify` has checked it.
+- Given a slug, it rips only that disc, and only if it is in the drive. `disc-run` uses this to retry a disc held for space or left mid-rip.
 
 #### Decoy discs
 
