@@ -63,6 +63,9 @@ def main():
             for blocker in blockers[:8]:
                 notify.say(f"  {blocker}")
             notify.say("Review it: disc-apply " + (slug or str(work_dir.parent)))
+            manifest.hold(manifest.load(slug),
+                          f"needs review: {len(blockers)} item(s) not eligible "
+                          "for automatic naming", stage="apply")
             return 1
         notify.say(f"\n{name}: every item high confidence -- applying "
                    "without review.")

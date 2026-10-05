@@ -37,3 +37,16 @@ def test_a_declined_item_is_not_counted(script, root):
     ])
 
     assert status._progress(rip, {}, manifest.APPLIED) == "0/1 transcoded"
+
+
+def test_a_review_hold_points_at_disc_apply(script, root):
+    status = script("disc-status")
+    slug = "men-in-black-ii-b23680"
+    manifest.save(manifest.new(slug, "fp", "MEN_IN_BLACK_II", "bluray"))
+    (root / slug / "plan.json").write_text(json.dumps({"items": []}))
+    manifest.hold(manifest.load(slug), "needs review: 1 item(s)", stage="apply")
+
+    row = status._queue_row(root / slug)
+
+    assert row["needs_you"] is True
+    assert row["command"] == f"disc-apply {slug}"

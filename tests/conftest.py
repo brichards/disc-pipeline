@@ -9,7 +9,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 BIN = PROJECT / "bin"
 sys.path.insert(0, str(PROJECT))
 
-from discpipe import config  # noqa: E402
+from discpipe import config, locks  # noqa: E402
 
 
 @pytest.fixture
@@ -36,6 +36,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "ROOT", queue)
     monkeypatch.setattr(config, "LEDGER", queue / "ledger.jsonl")
     monkeypatch.setattr(config, "OVERRIDES", queue / "overrides.json")
+    monkeypatch.setattr(locks, "LOCK_DIR", tmp_path / "locks")
     return queue
 
 

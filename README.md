@@ -202,6 +202,11 @@ disc-run --dry-run
 | `--grace N` | Seconds idle before a watch session exits (default 120) |
 | `--dry-run` | Report what would start; start nothing |
 
+Notes:
+
+- A stage that fails is not started again for that disc until the disc's state changes. Restart the session to retry it sooner.
+- A disc held for something that can clear on its own -- disk space, the NAS, the agent -- is retried every 10 minutes. The session stays open, keeping the Mac awake, while one is waiting.
+
 ### disc-rip
 
 Scans the disc, rips every title above the configured minimum length, and ejects. Discs already in the ledger are skipped. [Decoy discs](#decoy-discs) are held for review.

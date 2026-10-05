@@ -87,7 +87,7 @@ def _queue_row(path):
             command = "disc-rip"
         else:
             needs_you = True
-            command = ""
+            command = "disc-apply {t}" if data.get("held_stage") == "apply" else ""
     else:
         detail = _progress(path, data, state) or detail
 
