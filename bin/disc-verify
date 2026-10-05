@@ -34,6 +34,9 @@ def main():
                         help="block for the CPU lock instead of stepping aside")
     parser.add_argument("--no-eject", action="store_true",
                         help="leave the disc in the drive even once it verifies")
+    parser.add_argument("--force", action="store_true",
+                        help="decode titles whose rip failed only its duration "
+                             "check, and accept those that decode clean")
     args = parser.parse_args()
 
     name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
@@ -41,6 +44,18 @@ def main():
         data = manifest.load(slug)
     except (OSError, ValueError) as exc:
         notify.fail(f"cannot read the manifest: {exc}")
+
+    if args.force:
+        titles = _overridable(data, media_dir)
+        if not titles:
+            notify.say(f"{name}: no title failed only its duration check.")
+            return 0
+        try:
+            with locks.hold(locks.CPU, blocking=args.wait):
+                return _accept(data, name, titles)
+        except locks.Busy as exc:
+            notify.say(f"{exc} -- try again when it is free.")
+            return 1
 
     titles = _to_check(data, media_dir, args)
     if not titles:
@@ -88,17 +103,7 @@ def _verify(data, slug, name, titles, args):
         else:
             notify.say(f"  title {title['index']}  {path.name}")
 
-        started = time.time()
-        ok, errors = verify.decode(path)
-        elapsed = int(time.time() - started)
-
-        title["verify"] = {
-            "status": "clean" if ok else "errors",
-            "errors": errors[:20],
-            "error_count": len(errors),
-            "seconds": elapsed,
-            "at": manifest.now(),
-        }
+        ok, errors, elapsed = _decode(title, path)
         manifest.save(data)
 
         if ok:
@@ -133,6 +138,70 @@ def _verify(data, slug, name, titles, args):
     # the eject it skipped belongs here.
     if not args.no_eject:
         _eject_if_still_ours(data)
+    return 0
+
+
+def _decode(title, path):
+    started = time.time()
+    ok, errors = verify.decode(path)
+    elapsed = int(time.time() - started)
+    title["verify"] = {
+        "status": "clean" if ok else "errors",
+        "errors": errors[:20],
+        "error_count": len(errors),
+        "seconds": elapsed,
+        "at": manifest.now(),
+    }
+    return ok, errors, elapsed
+
+
+def _overridable(data, media_dir):
+    """Titles whose rip failed only because the file's runtime was off.
+
+    disc-rip records that mismatch only when MakeMKV finished the file. A title
+    MakeMKV itself failed may be cut short, and a cut-short file can still
+    decode cleanly, so those are never offered.
+    """
+    out = []
+    for title in data.get("titles", []):
+        rip = title.get("rip", {})
+        path = media_dir / title.get("output_name", "")
+        if (rip.get("status") == "failed"
+                and str(rip.get("error", "")).startswith("output runs")
+                and path.exists()):
+            out.append((title, path))
+    return out
+
+
+def _accept(data, name, titles):
+    """Accept a title that failed its duration check, once it decodes clean.
+
+    A clean decode proves the file is intact. It does not prove the file is
+    the title that was asked for, which is why a person has to ask.
+    """
+    notify.say(f"\n{name}: decode-checking {len(titles)} title(s) that failed "
+               "their duration check")
+    for title, path in titles:
+        rip = title["rip"]
+        notify.say(f"  title {title['index']}  {path.name}  ({rip['error']})")
+        ok, errors, elapsed = _decode(title, path)
+        if ok:
+            rip["accepted"] = {"at": manifest.now(), "overrode": rip.pop("error")}
+            rip["status"] = "done"
+            notify.say(f"    decodes clean ({elapsed // 60}m{elapsed % 60:02d}s) "
+                       "-- accepted")
+        else:
+            notify.say(f"    {len(errors)} decode error(s) -- still failed")
+        manifest.save(data)
+
+    if any(t.get("rip", {}).get("status") == "failed" for t in data["titles"]):
+        notify.say(f"\n{name}: still held -- some titles are still failed.")
+        return 1
+
+    data["rip"]["suspect"] = any(t.get("rip", {}).get("warnings")
+                                 for t in data["titles"])
+    manifest.advance(data, manifest.RIPPED)
+    notify.say(f"\n{name}: every title accepted -- ripped.")
     return 0
 
 
