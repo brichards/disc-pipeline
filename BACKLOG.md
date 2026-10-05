@@ -165,17 +165,18 @@ rip, and nothing called it, so the only way through was editing
 or says to insert it if it is not in the drive. The hold message names that
 command.
 
-## DP-23 — The drainer spins on a refusal — `todo`
+## DP-23 — The drainer spins on a refusal — `done`
 
-The drainer relaunches any stage that exits non-zero without changing the
-disc's state, every pass. `disc-apply --auto` refuses a plan that is not
-unanimously high confidence by exiting 1 and leaves the disc `identified`, so a
-disc waiting for review is offered to it again every 30 seconds -- 20 times in a
-row for Men in Black 3, with the Mac held awake throughout. A code comment calls
-this a gate; `GATES` does not include it.
+The drainer relaunched any stage that exited non-zero without changing the
+disc's state, every pass. `disc-apply --auto` refused an uncertain plan that
+way and left the disc `identified`, so a disc waiting for review was offered to
+it again every 30 seconds -- 20 times in a row for Men in Black 3.
 
-A refusal should hold the disc for review, and the drainer should not relaunch
-a stage that failed until the disc's state has changed.
+A refusal now holds the disc for review, and `disc-status` points at
+`disc-apply`. The drainer does not relaunch a stage that failed until the
+disc's state changes. A retryable hold -- disk space, the NAS, the agent -- is
+tried every 10 minutes instead of every pass, and the session stays open while
+one waits, so the disc resumes once the cause clears.
 
 ## DP-22 — Sizes are GiB labelled GB — `todo`
 

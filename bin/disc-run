@@ -58,6 +58,7 @@ UNATTENDED = {
 AUTO_APPLY_ACTION = ("disc-apply", locks.CPU)
 
 IDLE_GRACE = 120  # seconds with nothing to do before a session gives up
+RETRY_INTERVAL = 600  # seconds between tries at a hold that may clear itself
 
 
 def main():
@@ -82,6 +83,8 @@ def main():
 
 def _session(args):
     running = {}  # slug -> (stage, resource, Popen)
+    failed = {}  # slug -> (stage, state) when that stage last exited non-zero
+    tried = {}  # slug -> when a retryable hold was last retried
     keep_awake = None
     idle_since = None
 
@@ -91,12 +94,12 @@ def _session(args):
 
     try:
         while True:
-            _reap(running)
-            started = _pass(running, args)
+            _reap(running, failed)
+            started, waiting = _pass(running, failed, tried, args)
             if not args.watch:
                 return 0
 
-            if running or started:
+            if running or started or waiting:
                 idle_since = None
             else:
                 idle_since = idle_since or time.time()
@@ -112,14 +115,18 @@ def _session(args):
             keep_awake.terminate()
 
 
-def _pass(running, args):
-    """One sweep of the queue. Returns how many stages were started."""
+def _pass(running, failed, tried, args):
+    """One sweep of the queue.
+
+    Returns how many stages were started, and how many held discs are waiting
+    to be retried.
+    """
     busy = {resource for _, resource, _ in running.values()}
     # Anything held by a stage this session did not start -- a hand-run rip,
     # or one disc-watch kicked off -- is busy too.
     busy |= {r for r in (locks.DRIVE, locks.CPU, locks.NET, locks.AGENT)
              if r not in busy and not locks.is_free(r)}
-    started = 0
+    started = waiting = 0
 
     # A disc in the drive that nothing knows about yet. This is what makes
     # disc-watch a convenience rather than a requirement -- a missed mount
@@ -134,13 +141,24 @@ def _pass(running, args):
         if not slug or slug in running:
             continue
         stage, resource = _next_action(data)
-        if not stage or resource in busy:
+        if not stage:
+            continue
+        state = data.get("state")
+        if state == manifest.HELD:
+            waiting += 1
+            if time.time() - tried.get(slug, 0) < RETRY_INTERVAL:
+                continue
+        elif failed.get(slug) == (stage, state):
+            continue
+        if resource in busy:
             continue
         extra = [slug, *UNATTENDED.get(stage, ())]
         if _launch(running, slug, stage, resource, extra, args):
             busy.add(resource)
             started += 1
-    return started
+            if state == manifest.HELD:
+                tried[slug] = time.time()
+    return started, waiting
 
 
 def _next_action(data):
@@ -185,12 +203,15 @@ def _launch(running, slug, stage, resource, extra, args):
     return True
 
 
-def _reap(running):
+def _reap(running, failed):
     for slug in [s for s, (_, _, p) in running.items() if p.poll() is not None]:
         stage, _, process = running.pop(slug)
         label = slug if slug != "*drive*" else "new disc"
         if process.returncode != 0:
             notify.say(f"  {stage} for {label} exited {process.returncode}")
+            data = manifest.find(slug)
+            if data:
+                failed[slug] = (stage, data.get("state"))
 
 
 def _unqueued_disc():
