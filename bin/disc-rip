@@ -30,7 +30,11 @@ def main():
                         help="leave the disc in the drive when the rip is clean")
     parser.add_argument("--wait", action="store_true",
                         help="block for the drive lock instead of stepping aside")
+    parser.add_argument("--playlist", metavar="FILE",
+                        help="for a held decoy disc: the playlist to rip")
     args = parser.parse_args()
+    if args.playlist and not args.target:
+        notify.fail("--playlist needs the disc's slug: disc-rip <slug> --playlist FILE")
 
     try:
         config.check_environment()
@@ -38,9 +42,15 @@ def main():
         notify.alert("Rip cannot start", str(exc))
         notify.fail(str(exc))
 
+    if args.playlist:
+        _record_playlist(args.target, args.playlist)
+
     discs = disc.find_discs()
     if args.target:
         discs = [d for d in discs if _slug(*d) == args.target]
+        if not discs and args.playlist:
+            notify.say(f"Insert {args.target} to rip it.")
+            return 0
         if not discs:
             notify.fail(f"{args.target} is not the disc in the drive")
     if not discs:
@@ -59,6 +69,14 @@ def main():
     except locks.Busy as exc:
         notify.say(f"{exc} -- another rip is in progress.")
         return 0
+
+
+def _record_playlist(slug, playlist):
+    data = manifest.find(slug)
+    if data is None:
+        notify.fail(f"no queue entry named {slug!r}")
+    manifest.overrides_set(data["fingerprint"], playlist, note="disc-rip --playlist")
+    notify.say(f"{slug} will rip {playlist}")
 
 
 def _slug(mount, kind):
@@ -131,7 +149,8 @@ def _run(args, discs):
             )
             _park(data, reason, mount, args)
             notify.alert("Rip held", f"{label}: {reason}")
-            notify.say("Resolve with: disc-resolve " + slug)
+            notify.say(f"Pick the playlist that plays, then: "
+                       f"disc-rip {slug} --playlist FILE")
             return 1
 
     raw_dir = manifest.subdir(slug, "raw")

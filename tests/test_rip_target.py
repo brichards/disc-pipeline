@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from discpipe import disc
+from discpipe import disc, manifest
 
 FIRST = (Path("/Volumes/MEN_IN_BLACK"), disc.BLURAY)
 SECOND = (Path("/Volumes/MEN_IN_BLACK_II"), disc.BLURAY)
@@ -50,3 +50,37 @@ def test_without_a_slug_the_mounted_disc_is_ripped(rip):
     code, ripped = rip()
 
     assert ripped == [[FIRST, SECOND]]
+
+
+def test_a_playlist_is_recorded_for_a_disc_not_in_the_drive(rip):
+    """A held decoy disc has been ejected; the choice must outlive that."""
+    manifest.save(manifest.new("men-in-black-f1bb84", "fp-decoy", "MEN_IN_BLACK", "bluray"))
+
+    code, ripped = rip("men-in-black-f1bb84", "--playlist", "00800.mpls")
+
+    assert code == 0
+    assert ripped == []
+    assert manifest.overrides_load()["fp-decoy"]["playlist"] == "00800.mpls"
+
+
+def test_a_playlist_for_the_disc_in_the_drive_rips_it(rip):
+    slug = slug_of(SECOND)
+    manifest.save(manifest.new(slug, "fp-MEN_IN_BLACK_II", "MEN_IN_BLACK_II", "bluray"))
+
+    code, ripped = rip(slug, "--playlist", "00800.mpls")
+
+    assert ripped == [[SECOND]]
+    assert manifest.overrides_load()["fp-MEN_IN_BLACK_II"]["playlist"] == "00800.mpls"
+
+
+def test_a_playlist_needs_a_slug(rip):
+    with pytest.raises(SystemExit):
+        rip("--playlist", "00800.mpls")
+
+
+def test_a_playlist_for_an_unknown_disc_is_refused(rip):
+
+    with pytest.raises(SystemExit):
+        rip("men-in-blak-typo", "--playlist", "00800.mpls")
+
+    assert manifest.overrides_load() == {}

@@ -154,14 +154,16 @@ On 2026-10-04 one held Blu-ray drew over 300 failed launches.
 `disc-rip` takes an optional slug and rips only that disc, if it is in the
 drive. A test now checks that every stage the drainer starts accepts one.
 
-## DP-18 — Resolving a decoy disc means editing JSON by hand — `todo`
+## DP-18 — Resolving a decoy disc means editing JSON by hand — `done`
 
-`disc-rip` holds a decoy disc and tells you to run `disc-resolve <slug>`, which
-does not exist. Underneath, `manifest.overrides_set` records which playlist to
-rip, and nothing calls it, so the only way through is editing `overrides.json`.
+`disc-rip` held a decoy disc and told you to run `disc-resolve <slug>`, which
+did not exist. Underneath, `manifest.overrides_set` recorded which playlist to
+rip, and nothing called it, so the only way through was editing
+`overrides.json`.
 
-`disc-rip <slug> --playlist 00800.mpls` should record the override and rip.
-Same branch as DP-21, which gives `disc-rip` its slug.
+`disc-rip <slug> --playlist 00800.mpls` records the choice and rips the disc,
+or says to insert it if it is not in the drive. The hold message names that
+command.
 
 ## DP-23 — The drainer spins on a refusal — `todo`
 

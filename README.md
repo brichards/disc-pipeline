@@ -209,6 +209,7 @@ Scans the disc, rips every title above the configured minimum length, and ejects
 ```
 disc-rip
 disc-rip men-in-black-f1bb84
+disc-rip men-in-black-f1bb84 --playlist 00800.mpls
 disc-rip --dry-run
 disc-rip --redo
 ```
@@ -221,6 +222,7 @@ disc-rip --redo
 | `--redo` | Re-rip titles already marked done |
 | `--no-eject` | Leave the disc in the drive after a clean rip |
 | `--wait` | Wait for the drive lock instead of exiting when another rip is running |
+| `--playlist FILE` | For a held [decoy disc](#decoy-discs), record which playlist to rip. Needs the slug |
 
 Notes:
 
@@ -231,15 +233,13 @@ Notes:
 
 #### Decoy discs
 
-Some discs list dozens of near-identical feature-length playlists, only one of which plays correctly. `disc-rip` detects this and holds the disc for review. To resolve, manually add the correct playlist ID to `overrides.json` then call `disc-rip` again.
+Some discs list dozens of near-identical feature-length playlists, only one of which plays correctly. `disc-rip` detects this and holds the disc for review. Find the playlist that plays correctly, then record it:
 
-Example `overrides.json`, each entry is keyed by the fingerprint in the disc's `manifest.json`:
-
-```json
-{
-  "<disc-fingerprint>": { "playlist": "00800.mpls", "note": "confirmed by watching" }
-}
 ```
+disc-rip men-in-black-f1bb84 --playlist 00800.mpls
+```
+
+If the disc is in the drive it rips straight away; otherwise insert it. The choice is kept in `overrides.json`, keyed by the disc's fingerprint, so the disc rips the same playlist if it comes back.
 
 ### disc-verify
 
