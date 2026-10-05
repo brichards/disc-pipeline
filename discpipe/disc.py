@@ -112,11 +112,32 @@ def slugify(label, fingerprint_hex):
     return f"{text}-{fingerprint_hex[:6]}"
 
 
-def free_bytes(path):
+# Finder's "available" is free space plus whatever macOS will purge on demand
+# for something the user asked for, read from Foundation. osascript reaches
+# Foundation without adding a dependency.
+_AVAILABLE = """
+ObjC.import("Foundation");
+function run(argv) {
+  const key = "NSURLVolumeAvailableCapacityForImportantUsageKey";
+  const url = $.NSURL.fileURLWithPath(argv[0]);
+  return url.resourceValuesForKeysError($([key]), null).objectForKey(key).stringValue.js;
+}
+"""
+
+
+def available_bytes(path):
+    """Room for a write, as Finder counts it. Free space if macOS cannot say."""
     path = Path(path)
     while not path.exists() and path != path.parent:
         path = path.parent
-    return shutil.disk_usage(path).free
+    try:
+        result = subprocess.run(
+            ["osascript", "-l", "JavaScript", "-e", _AVAILABLE, str(path)],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        return int(result.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return shutil.disk_usage(path).free
 
 
 def estimated_bytes(titles):

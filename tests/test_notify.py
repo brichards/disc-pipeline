@@ -39,3 +39,12 @@ def test_nothing_is_printed_when_nothing_was_missed(capsys):
     notify.not_ripped(None)
 
     assert capsys.readouterr().out == ""
+
+
+def test_sizes_count_in_finders_units():
+    """A disc held as needing "42.3 GB" needed 45.4 GB by Finder's count."""
+    assert notify.human_bytes(45_400_000_000) == "45.4 GB"
+    assert notify.human_bytes(51_810_000_000) == "51.8 GB"
+    assert notify.human_bytes(1_500_000) == "1.5 MB"
+    assert notify.human_bytes(1_010_000_000) == "1.0 GB"
+    assert notify.human_bytes(999) == "999 B"

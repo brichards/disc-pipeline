@@ -171,15 +171,15 @@ def _run(args, discs):
                        0, 0, len(have), mount, args)
 
     needed = disc.estimated_bytes(todo) + config.SPACE_HEADROOM_BYTES
-    available = disc.free_bytes(config.ROOT)
+    available = disc.available_bytes(config.ROOT)
     notify.say(
         f"Need {notify.human_bytes(needed)}, "
-        f"{notify.human_bytes(available)} free"
+        f"{notify.human_bytes(available)} available"
     )
     if available < needed:
         reason = (
             f"needs {notify.human_bytes(needed)}, "
-            f"{notify.human_bytes(available)} free"
+            f"{notify.human_bytes(available)} available"
         )
         _park(data, reason, mount, args, retryable=True, stage="rip")
         notify.alert("Rip held", f"{label}: {reason}")
