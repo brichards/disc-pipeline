@@ -35,6 +35,7 @@ def root(tmp_path, monkeypatch):
     queue.mkdir()
     monkeypatch.setattr(config, "ROOT", queue)
     monkeypatch.setattr(config, "LEDGER", queue / "ledger.jsonl")
+    monkeypatch.setattr(config, "OVERRIDES", queue / "overrides.json")
     return queue
 
 

@@ -75,3 +75,16 @@ def test_drainer_flags_exist(script):
         for flag in flags:
             assert flag in accepted_flags(target), (
                 f"disc-run passes {flag} to {target}, which does not accept it")
+
+
+def test_every_stage_the_drainer_starts_takes_a_slug(script):
+    """disc-run starts each stage as `<stage> <slug>`. disc-rip took none, so
+    every retry of a held rip died on an argument error."""
+    run = script("disc-run")
+    stages = {stage for stage, _ in
+              [*run.ACTIONS.values(), *run.RETRY.values(), run.AUTO_APPLY_ACTION]}
+    for stage in stages:
+        result = subprocess.run([sys.executable, str(BIN / stage), "--help"],
+                                capture_output=True, text=True)
+        usage = result.stdout.split("\n\n")[0]
+        assert "target" in usage, f"disc-run passes a slug to {stage}, which takes none"
