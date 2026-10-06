@@ -6,13 +6,13 @@ from discpipe import notify
 
 
 def test_a_successful_eject_says_so(capsys):
-    notify.ejected(Path("/Volumes/MEN_IN_BLACK"), True)
+    notify.ejected(Path("/Volumes/MEN_IN_BLACK"), (True, ""))
 
     assert capsys.readouterr().out == "Ejected MEN_IN_BLACK\n"
 
 
 def test_a_failed_eject_says_which_disc_is_stuck(capsys):
-    notify.ejected(Path("/Volumes/MEN_IN_BLACK"), False)
+    notify.ejected(Path("/Volumes/MEN_IN_BLACK"), (False, ""))
 
     assert capsys.readouterr().out == "Could not eject MEN_IN_BLACK\n"
 
@@ -48,3 +48,11 @@ def test_sizes_count_in_finders_units():
     assert notify.human_bytes(1_500_000) == "1.5 MB"
     assert notify.human_bytes(1_010_000_000) == "1.0 GB"
     assert notify.human_bytes(999) == "999 B"
+
+
+def test_a_failed_eject_names_what_held_the_disc(capsys):
+    notify.ejected(Path("/Volumes/GANGSTER_SQUAD"),
+                   (False, "Unmount was dissented by PID 412 (/usr/bin/mds)"))
+
+    assert capsys.readouterr().out == (
+        "Could not eject GANGSTER_SQUAD: Unmount was dissented by PID 412 (/usr/bin/mds)\n")

@@ -178,6 +178,20 @@ disc's state changes. A retryable hold -- disk space, the NAS, the agent -- is
 tried every 10 minutes instead of every pass, and the session stays open while
 one waits, so the disc resumes once the cause clears.
 
+## DP-24 — The pipeline reports an eject the drive never made — `done`
+
+`disc.eject` ran `diskutil eject` and, when that failed, fell back to `drutil
+eject`. Right after a rip something can hold the disc open for a moment, so
+`diskutil` refuses -- and `drutil` exits 0 whether or not it ejected anything.
+The pipeline logged "Ejected" with the disc still in the drive, twice. On
+2026-10-06 that was reproduced by holding one file open on a mounted Blu-ray:
+`diskutil` exited 1 and named the process, `drutil` exited 0, and the disc
+stayed mounted.
+
+A refused `diskutil` eject is now retried for up to 30 seconds, the `drutil`
+fallback counts only when `drutil status` then reports an empty drive, and a
+failed eject names the process that held the disc.
+
 ## DP-25 — disc-apply crashes on a rip that never decoded clean — `done`
 
 From 2026-08-24 (`bda8af9`), `disc-apply` raised `NameError` on any disc whose
