@@ -245,18 +245,16 @@ def _run(args, discs):
 # first and silently accepted files containing the wrong title, because extras
 # on one disc land within a few percent of each other.
 #
-# 1.5s: MakeMKV reports whole seconds, so a correct rip lands under a second
-# out (measured: 0.50s and 0.86s on known-good files). Anything beyond that is
-# a different title.
+# MakeMKV reports a title's runtime in whole seconds, and the file it writes
+# runs past that figure: by up to 1.74s on known-good Blu-ray titles. A DVD's
+# IFO strays further -- the PGC playback time is assembled from cell times and
+# drifts from what the titles contain, by tens of seconds on a feature.
 #
 # This is a tripwire, not a proof. Warm Bodies has two extras 2 seconds apart,
 # which no tolerance can separate. The real guarantee is that the rip and the
 # scan now enumerate identically, so the indices cannot drift in the first
 # place.
-# A Blu-ray playlist states its runtime exactly. A DVD's IFO does not: the PGC
-# playback time is assembled from cell times and drifts from what the titles
-# actually contain, by tens of seconds on a feature.
-DURATION_TOLERANCE = {disc.BLURAY: 1.5, disc.DVD: 60.0}
+DURATION_TOLERANCE = {disc.BLURAY: 2.5, disc.DVD: 60.0}
 
 
 def _duration_matches(path, expected_seconds, kind):

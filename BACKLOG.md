@@ -230,6 +230,16 @@ still decode clean. Once no failed titles remain the disc moves to `ripped`
 and the drainer carries on. `disc-rip`'s failure message points at the
 command.
 
+## DP-26 — Correct Blu-ray rips fail their duration check — `done`
+
+MakeMKV reports a title's runtime in whole seconds, and the file it writes runs
+past that figure. Measured across 11 Gangster Squad titles the gap ran from
+0.07s to 1.74s, always over. The 1.5s Blu-ray tolerance assumed correct rips
+land under a second out, so the feature failed twice, on two rips, at 1.74s,
+and played perfectly. The tolerance is now 2.5s: the old margin plus the
+second MakeMKV rounds away. A title that comes out short, like Men in Black's
+4s-short extra, still fails.
+
 ## DP-19 — The watcher starts the drainer — `todo`
 
 Decided 2026-10-04: an inserted disc moves through every stage on its own unless
