@@ -10,6 +10,7 @@ import hashlib
 import re
 import shutil
 import subprocess
+import time
 import unicodedata
 from pathlib import Path
 
@@ -145,18 +146,49 @@ def estimated_bytes(titles):
     return sum(t.size_bytes for t in titles)
 
 
+EJECT_ATTEMPTS = 6
+EJECT_PAUSE = 5  # seconds
+
+
 def eject(mount):
     """Spit the disc out so the next one can go in unattended.
 
-    diskutil unmounts and ejects in one step; drutil is the fallback for a
-    drive that has already been unmounted but still holds the media.
+    Returns (ejected, why not). diskutil refuses while anything has the disc
+    open, and something often does for a moment after a rip, so a refusal is
+    retried. drutil is the fallback for a disc already unmounted but still in
+    the drive; it exits 0 whether or not it ejected anything, so only the
+    drive's own report counts for it.
     """
-    for command in (["diskutil", "eject", str(mount)], ["drutil", "eject"]):
-        try:
-            result = subprocess.run(command, capture_output=True, text=True,
-                                    timeout=60, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            continue
-        if result.returncode == 0:
-            return True
-    return False
+    refusal = ""
+    for attempt in range(EJECT_ATTEMPTS):
+        if not Path(mount).exists():
+            break
+        if attempt:
+            time.sleep(EJECT_PAUSE)
+        result = _run(["diskutil", "eject", str(mount)])
+        if result is not None and result.returncode == 0:
+            return True, ""
+        refusal = _refusal(result)
+    _run(["drutil", "eject"])
+    status = _run(["drutil", "status"])
+    if status is not None and "No Media Inserted" in status.stdout:
+        return True, ""
+    return False, refusal or "still in the drive"
+
+
+def _run(command):
+    try:
+        return subprocess.run(command, capture_output=True, text=True,
+                              timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _refusal(result):
+    """The line where diskutil names whatever held the disc, if it did."""
+    if result is None:
+        return ""
+    lines = [line.strip() for line in (result.stdout + result.stderr).splitlines()
+             if line.strip()]
+    held = [line for line in lines if "dissented by" in line]
+    return (held or lines or [""])[0]

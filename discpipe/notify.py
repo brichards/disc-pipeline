@@ -45,8 +45,12 @@ def say(message):
     print(message, flush=True)
 
 
-def ejected(mount, ok):
-    say(f"Ejected {mount.name}" if ok else f"Could not eject {mount.name}")
+def ejected(mount, outcome):
+    ok, why = outcome
+    if ok:
+        say(f"Ejected {mount.name}")
+    else:
+        say(f"Could not eject {mount.name}" + (f": {why}" if why else ""))
 
 
 def not_ripped(titles):
