@@ -4,7 +4,7 @@
 Event-driven, not a timer: launchd only wakes this when /Volumes changes, so
 it costs nothing on the days you are not ripping. Its failure mode is benign
 and self-announcing -- if it stops working you insert a disc, nothing happens,
-and you run disc-rip by hand.
+and you run disc-run --watch by hand.
 
 Everything it starts is detached and logged, so ejecting the disc and feeding
 the next one does not require watching a terminal.
@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import config, disc, locks, manifest, notify
+from discpipe import config, disc, drainer, locks, manifest, notify
 
 BIN = Path(__file__).resolve().parent
 AGENT_LABEL = "net.rzen.disc-pipeline.watch"
@@ -58,10 +58,6 @@ def main():
                         help="unload and remove the LaunchAgent")
     parser.add_argument("--status", action="store_true",
                         help="report whether the agent is loaded")
-    parser.add_argument("--once", action="store_true",
-                        help="run the check now, in the foreground")
-    parser.add_argument("--no-identify", action="store_true",
-                        help="rip only; do not chain into identification")
     args = parser.parse_args()
 
     if args.install:
@@ -70,10 +66,10 @@ def main():
         return _uninstall()
     if args.status:
         return _status()
-    return _check(args, foreground=args.once)
+    return _check()
 
 
-def _check(args, foreground=False):
+def _check():
     discs = disc.find_discs()
     if not discs:
         notify.say("No disc in the drive.")
@@ -103,60 +99,9 @@ def _check(args, foreground=False):
         notify.ejected(mount, disc.eject(mount))
         return 0
 
-    available = disc.available_bytes(config.ROOT)
-    if available < config.SPACE_HEADROOM_BYTES:
-        message = f"{notify.human_bytes(available)} available -- not enough to start"
-        notify.alert("Disc not ripped", f"{label}: {message}")
-        return 1
-
-    notify.say(f"{label}: starting rip ({slug})")
-    return _start(slug, args, foreground)
-
-
-def _start(slug, args, foreground):
-    """Rip, then identify.
-
-    Output goes to the one log at the queue root, prefixed with the disc slug,
-    so a stack of discs is a single file to tail. Ripping is serialised on the
-    drive lock, but identification is not, so one disc's identify can overlap
-    the next disc's rip -- hence the prefix.
-    """
-    (config.ROOT / slug / "logs").mkdir(parents=True, exist_ok=True)
-    log = config.ROOT / "watch.log"
-
-    # disc-verify exits immediately on a rip with no read errors, so it can
-    # sit here unconditionally. It exits non-zero on a file that will not
-    # decode, and the && stops identification from being paid for.
-    steps = [[str(BIN / "disc-rip"), "--wait"],
-             [str(BIN / "disc-verify"), slug, "--wait"]]
-    if not args.no_identify:
-        steps.append([str(BIN / "disc-identify"), slug])
-
-    if foreground:
-        for step in steps:
-            code = subprocess.run(step, check=False).returncode
-            if code != 0:
-                return code
-        return 0
-
-    script = " && ".join(
-        " ".join(_quote(part) for part in step) for step in steps
-    )
-    environment = dict(os.environ, DISC_LOG_PREFIX=f"[{slug}] ")
-    with open(log, "a", encoding="utf-8") as handle:
-        subprocess.Popen(
-            ["/bin/sh", "-c", script],
-            stdout=handle, stderr=handle,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            env=environment,
-        )
-    notify.say(f"Running in the background; tail {log}")
+    notify.say(f"{label}: handing it to the drainer ({slug})")
+    drainer.start()
     return 0
-
-
-def _quote(value):
-    return "'" + str(value).replace("'", "'\\''") + "'"
 
 
 def _install():

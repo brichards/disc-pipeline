@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import agent, manifest, notify, plan as planlib, probe
+from discpipe import agent, drainer, manifest, notify, plan as planlib, probe
 
 
 def main():
@@ -134,6 +134,7 @@ def _write_plan(plan, name, media_dir, work_dir, slug, files):
     notify.say(f"\nPlan: {plan_file}")
     notify.say(f"Review with: disc-apply {slug}")
     manifest.advance_slug(slug, manifest.IDENTIFIED)
+    drainer.start()
     return plan_file
 
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import config, disc, locks, manifest, notify
+from discpipe import config, disc, drainer, locks, manifest, notify
 
 BIN = Path(__file__).resolve().parent
 
@@ -131,8 +131,9 @@ def _pass(running, failed, tried, args):
     # A disc in the drive that nothing knows about yet. This is what makes
     # disc-watch a convenience rather than a requirement -- a missed mount
     # event costs a poll interval, not the disc.
-    if locks.DRIVE not in busy and _unqueued_disc():
-        if _launch(running, "*drive*", "disc-watch", locks.DRIVE, [], args):
+    if locks.DRIVE not in busy:
+        slug = _unqueued_disc()
+        if slug and _launch(running, slug, "disc-rip", locks.DRIVE, [slug], args):
             busy.add(locks.DRIVE)
             started += 1
 
@@ -188,7 +189,8 @@ def _launch(running, slug, stage, resource, extra, args):
 
     notify.say(f"  starting  {stage:<15} {label}")
     log = config.ROOT / "watch.log"
-    environment = dict(os.environ, DISC_LOG_PREFIX=f"[{slug}] ")
+    environment = dict(os.environ, DISC_LOG_PREFIX=f"[{slug}] ",
+                       **{drainer.UNDER_DRAINER: "1"})
     try:
         with open(log, "a", encoding="utf-8") as handle:
             process = subprocess.Popen(
@@ -215,7 +217,7 @@ def _reap(running, failed):
 
 
 def _unqueued_disc():
-    """True when the drive holds a disc with no queue entry yet."""
+    """The slug of a disc in the drive with no queue entry yet, or None."""
     for mount, kind in disc.find_discs():
         try:
             fingerprint = disc.fingerprint(mount, kind)
@@ -225,8 +227,8 @@ def _unqueued_disc():
             continue
         slug = disc.slugify(mount.name, fingerprint)
         if not (config.ROOT / slug / "manifest.json").exists():
-            return True
-    return False
+            return slug
+    return None
 
 
 def _caffeinate():
