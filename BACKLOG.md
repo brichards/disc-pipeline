@@ -130,6 +130,30 @@ path discarded in favour of an empty stderr. It now reads the envelope either
 way, and holds a run that never reached a verdict as retryable against the
 identify stage, so the drainer picks the disc back up once the cause clears.
 
+## DP-17 — disc-verify should adjudicate a failed title — `done`
+
+A title that failed only its duration check left a file on disk that may well
+have been fine, and there was no way to accept it short of editing the
+manifest.
+
+`disc-verify <slug> --force` decodes such a title and, on a clean result,
+marks it done with a record of the mismatch it overrode. Only titles MakeMKV
+finished are offered: one it failed may be cut short, and a cut-short file can
+still decode clean. Once no failed titles remain the disc moves to `ripped`
+and the drainer carries on. `disc-rip`'s failure message points at the
+command.
+
+## DP-18 — Resolving a decoy disc means editing JSON by hand — `done`
+
+`disc-rip` held a decoy disc and told you to run `disc-resolve <slug>`, which
+did not exist. Underneath, `manifest.overrides_set` recorded which playlist to
+rip, and nothing called it, so the only way through was editing
+`overrides.json`.
+
+`disc-rip <slug> --playlist 00800.mpls` records the choice and rips the disc,
+or says to insert it if it is not in the drive. The hold message names that
+command.
+
 ## DP-20 — A killed transcode can ship truncated — `done`
 
 The transcoders wrote straight to the final name in `transcoded/`. Killed
@@ -154,16 +178,21 @@ On 2026-10-04 one held Blu-ray drew over 300 failed launches.
 `disc-rip` takes an optional slug and rips only that disc, if it is in the
 drive. A test now checks that every stage the drainer starts accepts one.
 
-## DP-18 — Resolving a decoy disc means editing JSON by hand — `done`
+## DP-22 — Sizes are GiB labelled GB — `done`
 
-`disc-rip` held a decoy disc and told you to run `disc-resolve <slug>`, which
-did not exist. Underneath, `manifest.overrides_set` recorded which playlist to
-rip, and nothing called it, so the only way through was editing
-`overrides.json`.
+`notify.human_bytes` divided by 1024 and labelled the result GB, so every size
+the pipeline printed read about 7% below Finder's for the same bytes. A disc
+held as needing "42.3 GB" needed 45.4 GB by Finder's count. Sizes now count in
+decimal units, as Finder does, and so does the 10 GB of headroom a rip
+reserves.
 
-`disc-rip <slug> --playlist 00800.mpls` records the choice and rips the disc,
-or says to insert it if it is not in the drive. The hold message names that
-command.
+The space check compared the right bytes against the wrong figure: free
+space, where Finder shows available space -- free plus what macOS purges on
+demand for something the user asked for. The pipeline could hold a disc that
+Finder showed room for. It now reads Finder's figure from Foundation, and
+says "available" where it said "free". A rip can now outrun macOS freeing
+purgeable space; the 10 GB headroom is the buffer, and a title that fails
+that way leaves the disc held for a re-rip.
 
 ## DP-23 — The drainer spins on a refusal — `done`
 
@@ -201,34 +230,15 @@ variable it removed. It went unnoticed because such a disc is held by
 `disc-verify` first. On 2026-10-05 a disc was pushed past that hold on
 purpose, and the crash would have stopped it at review.
 
-## DP-22 — Sizes are GiB labelled GB — `done`
+## DP-26 — Correct Blu-ray rips fail their duration check — `done`
 
-`notify.human_bytes` divided by 1024 and labelled the result GB, so every size
-the pipeline printed read about 7% below Finder's for the same bytes. A disc
-held as needing "42.3 GB" needed 45.4 GB by Finder's count. Sizes now count in
-decimal units, as Finder does, and so does the 10 GB of headroom a rip
-reserves.
-
-The space check compared the right bytes against the wrong figure: free
-space, where Finder shows available space -- free plus what macOS purges on
-demand for something the user asked for. The pipeline could hold a disc that
-Finder showed room for. It now reads Finder's figure from Foundation, and
-says "available" where it said "free". A rip can now outrun macOS freeing
-purgeable space; the 10 GB headroom is the buffer, and a title that fails
-that way leaves the disc held for a re-rip.
-
-## DP-17 — disc-verify should adjudicate a failed title — `done`
-
-A title that failed only its duration check left a file on disk that may well
-have been fine, and there was no way to accept it short of editing the
-manifest.
-
-`disc-verify <slug> --force` decodes such a title and, on a clean result,
-marks it done with a record of the mismatch it overrode. Only titles MakeMKV
-finished are offered: one it failed may be cut short, and a cut-short file can
-still decode clean. Once no failed titles remain the disc moves to `ripped`
-and the drainer carries on. `disc-rip`'s failure message points at the
-command.
+MakeMKV reports a title's runtime in whole seconds, and the file it writes runs
+past that figure. Measured across 11 Gangster Squad titles the gap ran from
+0.07s to 1.74s, always over. The 1.5s Blu-ray tolerance assumed correct rips
+land under a second out, so the feature failed twice, on two rips, at 1.74s,
+and played perfectly. The tolerance is now 2.5s: the old margin plus the
+second MakeMKV rounds away. A title that comes out short, like Men in Black's
+4s-short extra, still fails.
 
 ## DP-19 — The watcher starts the drainer — `todo`
 

@@ -152,3 +152,25 @@ def test_title_keys_are_unique_on_every_disc_layout(script):
     # A record read back from the manifest is a dict, and must key the same.
     one = dvd_title(0, 5850, "1-48")
     assert rip._title_key(rip._title_record(one)) == rip._title_key(one)
+
+
+def test_bluray_allows_the_second_makemkv_rounds_away(script, monkeypatch, tmp_path):
+    """Gangster Squad: MakeMKV said 1:52:54, the correct file ran 6775.74s."""
+    rip = script("disc-rip")
+    one = bluray_title(2, 6774, "00100.mpls")
+    raw, records = prepare(rip, monkeypatch, tmp_path, [one], [one.output_name], fixed(6775.74))
+
+    todo, have = rip._split_todo([one], records, raw, False, disc.BLURAY)
+
+    assert have == [one] and todo == []
+
+
+def test_bluray_still_catches_a_title_cut_short(script, monkeypatch, tmp_path):
+    """Men in Black's Blu-ray title 2 came out 4s short, with 199 read errors."""
+    rip = script("disc-rip")
+    one = bluray_title(2, 276, "00231.mpls")
+    raw, records = prepare(rip, monkeypatch, tmp_path, [one], [one.output_name], fixed(272))
+
+    todo, have = rip._split_todo([one], records, raw, False, disc.BLURAY)
+
+    assert todo == [one] and have == []
