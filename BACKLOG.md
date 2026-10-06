@@ -217,16 +217,18 @@ says "available" where it said "free". A rip can now outrun macOS freeing
 purgeable space; the 10 GB headroom is the buffer, and a title that fails
 that way leaves the disc held for a re-rip.
 
-## DP-17 — disc-verify should adjudicate a failed title — `todo`
+## DP-17 — disc-verify should adjudicate a failed title — `done`
 
-A title that failed only its duration check leaves a file on disk that may
-well be fine, and there is no way to accept it short of editing the manifest.
-Re-ripping an hour of video to reach the same file is the only supported path.
+A title that failed only its duration check left a file on disk that may well
+have been fine, and there was no way to accept it short of editing the
+manifest.
 
-`disc-verify --force` fits the vocabulary -- it overrides the refusal to look
-at a failed title. Decode it; on a clean result promote it to done, recording
-that a person asked. Decoding proves the file is intact, not that it is the
-title that was asked for, so this stays explicit rather than automatic.
+`disc-verify <slug> --force` decodes such a title and, on a clean result,
+marks it done with a record of the mismatch it overrode. Only titles MakeMKV
+finished are offered: one it failed may be cut short, and a cut-short file can
+still decode clean. Once no failed titles remain the disc moves to `ripped`
+and the drainer carries on. `disc-rip`'s failure message points at the
+command.
 
 ## DP-19 — The watcher starts the drainer — `todo`
 

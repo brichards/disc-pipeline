@@ -253,6 +253,7 @@ Runs a decode step on titles that logged rip errors to verify file integrity. Ex
 ```
 disc-verify
 disc-verify --all
+disc-verify men-in-black-f1bb84 --force
 ```
 
 | Flag | Effect |
@@ -261,8 +262,15 @@ disc-verify --all
 | `--redo` | Re-check titles already verified |
 | `--wait` | Wait for the CPU lock instead of stepping aside |
 | `--no-eject` | Leave the disc in the drive after it verifies |
+| `--force` | Decode titles whose rip failed only its duration check, and accept those that decode clean |
 
 A file that will not decode holds the disc for review and ejects it. Clean the disc, reinsert it, and run `disc-rip --redo`.
+
+Notes:
+
+- `--force` prints the duration mismatch it overrides before decoding. A clean decode shows the file is intact, not that it is the title that was asked for.
+- Titles MakeMKV itself failed are never offered to `--force`: they may be cut short, and a cut-short file can still decode clean.
+- Once no failed titles remain, the disc moves on to identify.
 
 ### disc-identify
 

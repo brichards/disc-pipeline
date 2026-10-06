@@ -374,6 +374,10 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
         notify.alert("Rip incomplete", f"{label}: {reason}")
         notify.say("Clean the disc, reinsert it, and only the failed titles "
                    "are retried.")
+        if any(str(r.get("rip", {}).get("error", "")).startswith("output runs")
+               for r in data["titles"]):
+            notify.say("A title that failed only its duration check can be "
+                       f"accepted as it is: disc-verify {slug} --force")
         return 1
 
     _record_in_ledger(data, label, kind, slug, fingerprint)
