@@ -23,7 +23,7 @@ from discpipe import drainer, locks, manifest, notify, plan as planlib, probe, t
 def main():
     parser = argparse.ArgumentParser(description="Transcode a reviewed rip.")
     parser.add_argument("target", nargs="?", default=None,
-                        help="queue slug or directory; defaults to the current directory")
+                        help="queue slug or disc folder; defaults to the current directory")
     parser.add_argument("--dry-run", action="store_true",
                         help="show the commands, transcode nothing")
     parser.add_argument("--redo", action="store_true",

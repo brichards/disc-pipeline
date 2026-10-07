@@ -35,7 +35,7 @@ MARK = {
 def main():
     parser = argparse.ArgumentParser(description="Review and apply a naming plan.")
     parser.add_argument("target", nargs="?", default=None,
-                        help="queue slug or directory; defaults to the current directory")
+                        help="queue slug or disc folder; defaults to the current directory")
     parser.add_argument("--yes", action="store_true",
                         help="accept every proposal without review")
     parser.add_argument("--auto", action="store_true",

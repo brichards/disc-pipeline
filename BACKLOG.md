@@ -256,6 +256,15 @@ and played perfectly. The tolerance is now 2.5s: the old margin plus the
 second MakeMKV rounds away. A title that comes out short, like Men in Black's
 4s-short extra, still fails.
 
+## DP-27 — A folder outside the queue breaks on adoption — `done`
+
+A stage adopted a folder outside the queue in two parts. The media moved into
+the folder's own `raw/`. The manifest went into the queue under the folder's
+name. The queue then held an entry in the `ripped` state with no media. A
+second run refused the folder: "has no manifest and no .mkv files". A folder
+inside a disc folder, such as `raw/`, had the same result. A stage now refuses
+each folder that is not a disc folder in the queue.
+
 ## DP-06 — Simplify the three largest commands — `todo`
 
 `disc-rip` (406), `disc-apply` (402), `disc-cleanup` (372) of 4,298 total.
@@ -315,6 +324,20 @@ So the above-1080p branch in `transcode.route()` may be routing to a
 deprecated script for behavior the current `transcode-video.rb` already has.
 Check what the rewritten script does with UHD before deciding. Related to
 DP-12, since comb detection sits in the same tool.
+
+## DP-28 — Stages and folders outside the queue — `todo`
+
+For discussion. Since DP-27, a stage refuses a folder outside the queue. Two
+functions can replace the refusal. A stage can have one function or the two
+functions together:
+
+- The stage moves the folder into the queue after you accept the move. The
+  drainer then controls the disc.
+- A stage that you run by hand can use a folder in a different location. The
+  drainer ignores that folder.
+
+For the second function, a stage must find a manifest from its folder. At this
+time, `manifest.load` finds a manifest only from its slug in the queue root.
 
 ## DP-13 — Re-evaluate the language — `todo`
 
