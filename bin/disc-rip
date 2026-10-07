@@ -112,23 +112,29 @@ def _run(args, discs):
         manifest.save(data)
 
     min_length = config.MIN_TITLE_LENGTH
-
-    notify.say(f"Scanning titles (minimum {min_length}s)...")
-    info, raw = makemkv.scan(args.disc, min_length)
-    if not info.titles:
-        _park(data, "makemkvcon returned no titles", mount, args)
-        notify.alert("Rip held", f"{label}: no titles returned")
-        return 1
-
     logs = manifest.subdir(slug, "logs")
-    (logs / "scan.txt").write_text(raw, encoding="utf-8")
+    known = _held_for_space(data) and not (args.redo or args.playlist or args.dry_run)
 
-    candidates = [t for t in info.titles if t.seconds >= min_length]
-    data["titles"] = _merge_titles(data.get("titles", []), candidates)
-    data["triage"] = triage.summarize(info.titles, min_length)
-    manifest.save(data)
+    if known:
+        notify.say("This disc is already scanned. The rip uses the titles from "
+                   "the first scan.")
+        candidates = _stored_titles(data)
+    else:
+        notify.say(f"Scanning titles (minimum {min_length}s)...")
+        info, raw = makemkv.scan(args.disc, min_length)
+        if not info.titles:
+            _park(data, "makemkvcon returned no titles", mount, args)
+            notify.alert("Rip held", f"{label}: no titles returned")
+            return 1
 
-    _report(candidates, data["triage"])
+        (logs / "scan.txt").write_text(raw, encoding="utf-8")
+
+        candidates = [t for t in info.titles if t.seconds >= min_length]
+        data["titles"] = _merge_titles(data.get("titles", []), candidates)
+        data["triage"] = triage.summarize(info.titles, min_length)
+        manifest.save(data)
+
+        _report(candidates, data["triage"])
 
     if data["triage"]["obfuscated"]:
         override = manifest.overrides_load().get(fingerprint)
@@ -350,6 +356,19 @@ def _park(data, reason, mount, args, retryable=False, stage=None):
         notify.say("Disc left in the drive -- clear the problem and re-run.")
     else:
         _eject(mount, args)
+
+
+def _held_for_space(data):
+    return (data.get("state") == manifest.HELD and data.get("held_retryable")
+            and data.get("held_stage") == "rip")
+
+
+def _stored_titles(data):
+    return [makemkv.Title(index=r["index"], chapters=r["chapters"], seconds=r["seconds"],
+                          duration=r["duration"], size_bytes=r["size_bytes"],
+                          source_file=r["source_file"], segment_map=r["segment_map"],
+                          output_name=r["output_name"])
+            for r in data["titles"]]
 
 
 def _finish(data, label, kind, slug, fingerprint, raw_dir,
