@@ -404,6 +404,7 @@ Notes:
 - Each shipped disc is reviewed in three steps: the transcoded output, then the source rip, then the disc folder itself.
 - 4K source rips are never offered for deletion.
 - Can only delete files that (1) exist within the pipeline root and (2) were created by a pipeline script.
+- At the end, shows the space available in the pipeline root, as Finder counts it.
 
 ## Design notes
 

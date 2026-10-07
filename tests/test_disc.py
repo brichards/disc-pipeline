@@ -1,5 +1,6 @@
 """An ejected disc can leave its mount point behind on macOS."""
 
+import pathlib
 import shutil
 import subprocess
 
@@ -56,6 +57,16 @@ def test_space_is_measured_as_finder_measures_it(monkeypatch, tmp_path):
 
     assert disc.available_bytes(tmp_path) == 61_579_284_888
     assert "NSURLVolumeAvailableCapacityForImportantUsageKey" in seen[0][4]
+
+
+def test_every_command_measures_space_the_same_way():
+    """disc-cleanup kept free space after the others changed to Finder's figure."""
+    project = pathlib.Path(__file__).resolve().parent.parent
+    sources = [*project.glob("bin/disc-*"), *project.glob("discpipe/*.py")]
+    measured = [path.name for path in sources if path.name != "disc.py"
+                and any(call in path.read_text() for call in ("disk_usage", "statvfs"))]
+
+    assert measured == []
 
 
 def test_free_space_stands_in_when_macos_cannot_say(monkeypatch, tmp_path):
