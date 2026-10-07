@@ -120,15 +120,13 @@ Install the watcher once. It is a macOS LaunchAgent that runs only when somethin
 disc-watch --install
 ```
 
-Insert a disc. The watcher responds and kicks things off, automatically ejecting the disc when finished or if it was already ripped.
+Insert a disc. The watcher starts a `disc-run --watch` session, which carries the disc through every stage until something needs you, ejecting it once it is ripped. A disc that was already ripped is ejected straight away.
 
-Then, start a new session to automatically move all discs through each remaining stage:
+The session polls every 30 seconds, starts stages as their resources free up, keeps the Mac awake, and exits on its own when nothing is left to do. Failures post a macOS notification. To start one without inserting a disc:
 
 ```
 disc-run --watch
 ```
-
-The session polls every 30 seconds, starts stages as their resources free up, and exits on its own when nothing is left to do. Failures post a macOS notification.
 
 To check pipeline progress, call `disc-status`:
 
@@ -163,13 +161,15 @@ disc-ship
 
 A folder of `.mkv` files ripped some other way works too: point any stage at it and it becomes a tracked disc directory, retaining its original name.
 
+A stage run by hand that moves a disc forward starts a `disc-run --watch` session to carry it on, unless one is already running.
+
 ## Commands
 
 Every command accepts `--help`.
 
 ### disc-watch
 
-Notices a disc and starts work on it. Installed as a LaunchAgent that runs whenever `/Volumes` changes.
+Notices a disc and hands it to a `disc-run --watch` session. Installed as a LaunchAgent that runs whenever `/Volumes` changes.
 
 ```
 disc-watch --install
@@ -182,8 +182,11 @@ disc-watch              # run one check by hand
 | `--install` | Write the LaunchAgent to `~/Library/LaunchAgents` and load it. Re-run if your `PATH` or install location move |
 | `--uninstall` | Unload and remove the LaunchAgent |
 | `--status` | Report whether the LaunchAgent is loaded |
-| `--once` | Run the check now, in the foreground |
-| `--no-identify` | Rip and verify only, skip the identify step until later |
+
+Notes:
+
+- A disc already in the ledger is ejected instead.
+- If a session is already running, it picks the disc up on its next pass.
 
 ### disc-run
 
@@ -204,6 +207,8 @@ disc-run --dry-run
 
 Notes:
 
+- A disc in the drive with no queue entry is ripped with `disc-rip <slug>`.
+- `disc-watch` starts a session when a disc goes in, and so does any stage run by hand that moves a disc forward.
 - A stage that fails is not started again for that disc until the disc's state changes. Restart the session to retry it sooner.
 - A disc held for something that can clear on its own -- disk space, the NAS, the agent -- is retried every 10 minutes. The session stays open, keeping the Mac awake, while one is waiting.
 

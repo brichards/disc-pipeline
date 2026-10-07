@@ -38,13 +38,14 @@ def accepted_flags(command):
 
 
 def chained_calls():
-    """Every literal [script, "--flag", ...] a command builds for another.
+    """Every literal [script, "--flag", ...] one part of the pipeline builds for a command.
 
-    disc-watch chains stages this way; the list is inside a function, so the
-    source is the only place to read it.
+    The list is inside a function, so the source is the only place to read it.
     """
-    for command in COMMANDS:
-        tree = ast.parse((BIN / command).read_text())
+    sources = [BIN / command for command in COMMANDS]
+    sources += sorted((BIN.parent / "discpipe").glob("*.py"))
+    for source in sources:
+        tree = ast.parse(source.read_text())
         for node in ast.walk(tree):
             if not isinstance(node, ast.List):
                 continue
@@ -58,7 +59,7 @@ def chained_calls():
                             flags.append(text.value)
             if target and flags:
                 for flag in flags:
-                    yield command, target, flag
+                    yield source.name, target, flag
 
 
 @pytest.mark.parametrize("caller,target,flag", list(chained_calls()))

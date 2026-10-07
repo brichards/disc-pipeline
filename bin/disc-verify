@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import disc, locks, manifest, notify, plan as planlib, probe, verify
+from discpipe import disc, drainer, locks, manifest, notify, plan as planlib, probe, verify
 
 
 def main():
@@ -131,6 +131,7 @@ def _verify(data, slug, name, titles, args):
     # checked. Downstream stages read this rather than the raw warning count.
     data["rip"]["verified"] = True
     manifest.save(data)
+    drainer.start()
     notify.say(f"\n{name}: verified -- every checked title decodes cleanly.")
 
     # disc-rip keeps a suspect disc in the drive because the next move is
@@ -201,6 +202,7 @@ def _accept(data, name, titles):
     data["rip"]["suspect"] = any(t.get("rip", {}).get("warnings")
                                  for t in data["titles"])
     manifest.advance(data, manifest.RIPPED)
+    drainer.start()
     notify.say(f"\n{name}: every title accepted -- ripped.")
     return 0
 

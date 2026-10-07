@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import locks, manifest, notify, plan as planlib, probe, transcode
+from discpipe import drainer, locks, manifest, notify, plan as planlib, probe, transcode
 
 
 def main():
@@ -188,6 +188,7 @@ def _finish(plan, work_dir, slug, out_dir):
     planlib.save(plan, work_dir)
     notify.say(f"\nReady to ship from {out_dir}")
     manifest.advance_slug(slug, manifest.TRANSCODED)
+    drainer.start()
     return 0
 
 

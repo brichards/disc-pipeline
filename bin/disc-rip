@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import config, disc, locks, makemkv, manifest, notify, probe, triage
+from discpipe import config, disc, drainer, locks, makemkv, manifest, notify, probe, triage
 
 
 def main():
@@ -385,6 +385,7 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
     if warnings:
         data["rip"]["suspect"] = True
         manifest.advance(data, manifest.RIPPED)
+        drainer.start()
         notify.alert(
             "Rip finished with warnings",
             f"{label}: {len(warnings)} read problem(s) -- check the tail",
@@ -394,6 +395,7 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
         return 0
 
     manifest.advance(data, manifest.RIPPED)
+    drainer.start()
     notify.say(f"Ripped to {raw_dir}")
     _eject(mount, args)
     return 0

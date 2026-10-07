@@ -9,7 +9,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 BIN = PROJECT / "bin"
 sys.path.insert(0, str(PROJECT))
 
-from discpipe import config, locks  # noqa: E402
+from discpipe import config, drainer, locks  # noqa: E402
 
 
 @pytest.fixture
@@ -52,3 +52,12 @@ def bluray(tmp_path):
             (mount / "BDMV" / "STREAM" / stream).write_bytes(b"x" * 16)
         return mount
     return build
+
+
+@pytest.fixture(autouse=True)
+def no_real_drainer(monkeypatch):
+    """A stage that moves a disc forward starts disc-run --watch. Never from a test."""
+    monkeypatch.setenv(drainer.UNDER_DRAINER, "1")
+    launched = []
+    monkeypatch.setattr(drainer, "_launch_session", lambda log: launched.append(log))
+    return launched

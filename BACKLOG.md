@@ -154,6 +154,22 @@ rip, and nothing called it, so the only way through was editing
 or says to insert it if it is not in the drive. The hold message names that
 command.
 
+## DP-19 — The watcher starts the drainer — `done`
+
+Decided 2026-10-04: an inserted disc moves through every stage on its own
+unless something blocks it. `disc-watch` used to rip, verify and identify,
+then stop, and the stages that take longest waited for someone to start
+`disc-run`.
+
+`disc-watch` now hands a new disc to a `disc-run --watch` session, and still
+ejects one already in the ledger. The drainer rips a disc it does not know yet
+with `disc-rip <slug>`. A stage run by hand that moves a disc forward starts a
+session too, unless one is running, so clearing a block carries on without
+being remembered. Every disc now moves under the drainer, whose `caffeinate`
+keeps the Mac awake the whole way.
+
+`disc-watch --once` and `--no-identify` are gone; both only shaped the chain.
+
 ## DP-20 — A killed transcode can ship truncated — `done`
 
 The transcoders wrote straight to the final name in `transcoded/`. Killed
@@ -239,28 +255,6 @@ land under a second out, so the feature failed twice, on two rips, at 1.74s,
 and played perfectly. The tolerance is now 2.5s: the old margin plus the
 second MakeMKV rounds away. A title that comes out short, like Men in Black's
 4s-short extra, still fails.
-
-## DP-19 — The watcher starts the drainer — `todo`
-
-Decided 2026-10-04: an inserted disc moves through every stage on its own unless
-something blocks it. `disc-watch` starts `disc-run --watch` and nothing else.
-Its rip, verify and identify chain duplicated three of the drainer's stages
-without the drainer's locks or keep-awake, and stopped before the stages that
-take longest.
-
-- The drainer rips a disc it does not know yet by running `disc-rip` itself.
-  Handing it to `disc-watch` would start a second drainer, which exits on the
-  session lock, and the disc would never rip.
-- A stage run by hand starts the drainer when it succeeds, so clearing a block
-  -- a review, a decoy, a cleaned disc -- carries on without being remembered.
-  The session lock makes that a no-op when a drainer is already running.
-- The drainer's `caffeinate` covers the whole run. That closes the gap where a
-  rip the watcher started had nothing keeping the Mac awake; on 2026-10-04 a
-  Blu-ray rip lost its only keep-awake when the drainer stopped partway through.
-- The README's two-step workflow becomes one step.
-
-Needs DP-21 and DP-23 first, or a drainer started on every insert spins on the
-first block it meets.
 
 ## DP-06 — Simplify the three largest commands — `todo`
 

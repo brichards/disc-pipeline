@@ -22,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import config, manifest, notify, plan as planlib
+from discpipe import config, drainer, manifest, notify, plan as planlib
 
 MARK = {
     planlib.FEATURE: "*",
@@ -116,6 +116,7 @@ def main():
 
     notify.say(f"\nApplied {applied} change(s).")
     manifest.advance_slug(slug, manifest.APPLIED)
+    drainer.start()
     return 0
 
 
