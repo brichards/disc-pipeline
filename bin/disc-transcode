@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Stage 04 -- transcode the files that survived review.
+"""Transcode the titles that the review kept, into transcoded/.
 
-Shapes the output exactly as it ships: a movie folder when extras were kept,
-a bare file when the feature is all there is, because Plex needs the folder for
-extras to attach and does not want one otherwise. That makes disc-ship a plain
-copy with no path rewriting.
+transcode-video.rb encodes a title of 1080p or less, and hevc-transcode.rb
+encodes a title above 1080p. Each output keeps all subtitle tracks.
 
-Status is tracked per file, not per disc. A two-hour feature is hours of CPU,
-and an interrupted run should resume at the next file rather than start over.
+The output has the shape that disc-ship copies: a movie folder when more than
+one file ships, or a bare file for a lone feature. Each file has its own
+status, so a new run transcodes only the files that are not complete. --redo
+transcodes each file again.
 """
 
 import argparse
@@ -48,9 +48,8 @@ def main():
     folder = _folder_name(features, plan, name)
     out_root = work_dir / "transcoded"
 
-    # A folder whenever more than one file ships, not only when extras exist.
-    # Two editions of a feature need one too: Plex expects both cuts inside
-    # Movies/Taken (2008)/, and a bare pair in Movies/ reads as two films.
+    # Plex needs a movie folder for extras and for a second edition. Two bare
+    # files in Movies/ show as two movies.
     out_dir = out_root / folder if len(keepers) > 1 else out_root
 
     notify.say(f"\n{plan.get('title', name)} -- {len(features)} feature(s), "
@@ -82,8 +81,6 @@ def main():
             _mark(keeper["item"], "done", destination)
             continue
         if done:
-            # Status said done but the output is gone. Trusting the record over
-            # the filesystem is how a deleted file becomes a missing shipment.
             notify.say(f"  redo  {source.name}  (marked done, output missing)")
         todo.append((keeper, source, script, info))
 
@@ -121,7 +118,6 @@ def main():
 
 
 def _keepers(plan, media_dir):
-    """Files that survived review, in the order they should be transcoded."""
     out = []
     for item, action, new_name in planlib.kept(plan):
         path = media_dir / new_name
@@ -129,16 +125,14 @@ def _keepers(plan, media_dir):
             notify.say(f"  gone  {new_name} (renamed or moved since review)")
             continue
         out.append({"item": item, "path": path, "action": action})
-    # Features first: the long pole, and the file you most want to see land.
     out.sort(key=lambda k: 0 if k["action"] == planlib.FEATURE else 1)
     return out
 
 
 def _folder_name(features, plan, fallback):
-    """The Plex movie folder, taken from the feature's own filename.
+    """A Plex movie folder has no edition suffix.
 
-    Prefer the edition-less feature: `Taken 2 (2012).mkv` gives the folder,
-    while `Taken 2 (2012) {edition-Unrated}.mkv` sits inside it.
+    `Taken 2 (2012) {edition-Unrated}.mkv` goes in `Taken 2 (2012)/`.
     """
     plain = [f for f in features if "{" not in f["path"].name]
     if plain:

@@ -1,4 +1,4 @@
-"""Writing the manifest, the plan and the playlist overrides."""
+"""Write a JSON file so that an interrupted write cannot truncate it."""
 
 import json
 import os
@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 def write(target, data):
-    """Write atomically, so an interrupted save cannot truncate the file."""
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")

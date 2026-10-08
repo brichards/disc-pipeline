@@ -1,9 +1,9 @@
-"""Per-disc state.
+"""The state of each disc, and the ledger of each disc ever seen.
 
-manifest.json is the single source of truth for where a disc is in the
-pipeline. The ledger records identity and disposition only, so it can outlive
-the queue directory after cleanup; nothing duplicates stage state, because two
-copies of a state machine drift and then you are debugging which one lied.
+manifest.json in each disc folder records the stage and the titles of the
+disc. The ledger, ledger.jsonl in the queue root, records each disc by its
+fingerprint, and stays after disc-cleanup deletes the disc folder.
+overrides.json in the queue root records the playlist for a decoy disc.
 """
 
 import json
@@ -13,16 +13,14 @@ from . import config, jsonfile
 
 VERSION = 1
 
-# Stage states. The drainer advances a disc whenever its state has an automatic
-# successor; HELD and the two gate states are where it stops.
 QUEUED = "queued"
 RIPPED = "ripped"
-IDENTIFIED = "identified"  # gate: awaiting your review
+IDENTIFIED = "identified"
 APPLIED = "applied"
 TRANSCODED = "transcoded"
-SHIPPED = "shipped"  # gate: awaiting retention decision
+SHIPPED = "shipped"
 DONE = "done"
-HELD = "held"  # needs a human, see held_reason
+HELD = "held"
 
 GATE_STATES = (IDENTIFIED, SHIPPED, HELD)
 
@@ -63,7 +61,6 @@ def load(slug):
 
 
 def find(slug):
-    """The manifest for slug, or None if there is no readable one."""
     try:
         return load(slug)
     except (OSError, ValueError):
@@ -76,7 +73,6 @@ def save(data):
 
 
 def queue_dirs():
-    """Every rip directory under the queue root, by name."""
     if not config.ROOT.exists():
         return []
     return [path for path in sorted(config.ROOT.iterdir())
@@ -84,7 +80,6 @@ def queue_dirs():
 
 
 def all_discs():
-    """Every queued disc, oldest first. disc-status and the drainer read this."""
     if not config.ROOT.exists():
         return []
     found = (find(p.parent.name) for p in sorted(config.ROOT.glob("*/manifest.json")))
@@ -92,14 +87,6 @@ def all_discs():
 
 
 def hold(data, reason, retryable=False, stage=None):
-    """Park a disc for attention.
-
-    retryable marks a hold whose cause is external and may simply go away --
-    no disk space, share not mounted. Those can be retried by running the stage
-    again once the condition clears. A hold that needs a decision -- an
-    unresolved decoy disc, a damaged title -- is not retryable, and re-running
-    will land in the same place.
-    """
     data["state"] = HELD
     data["held_reason"] = reason
     data["held_retryable"] = bool(retryable)
@@ -127,7 +114,6 @@ def subdir(slug, name):
 
 
 def ledger_append(entry):
-    """Append-only record of every disc ever seen, keyed by fingerprint."""
     config.ensure_root()
     with open(config.LEDGER, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
@@ -147,12 +133,11 @@ def ledger_find(fingerprint):
             except json.JSONDecodeError:
                 continue
             if entry.get("fingerprint") == fingerprint:
-                match = entry  # last write wins
+                match = entry
     return match
 
 
 def overrides_load():
-    """Playlist answers for discs that defeated metadata triage."""
     if not config.OVERRIDES.exists():
         return {}
     try:

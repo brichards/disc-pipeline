@@ -1,8 +1,7 @@
-"""Reading ripped files: stream inventory and contact sheets.
+"""Read the streams of a ripped file, and make its contact sheets.
 
-Identification is a visual problem -- title cards, credits, whether two files
-are the same programme -- so this module's job is to put enough of each file
-in front of the agent that it can decide without opening anything itself.
+The contact sheets go to the agent of disc-identify. Other stages use ffprobe()
+to read the runtime, the size or the height of a file.
 """
 
 import json
@@ -12,15 +11,10 @@ from pathlib import Path
 
 from . import notify
 
-# Frames per contact sheet, and the grid they are tiled into.
-# The head window has to clear the studio logo before the title card appears.
-# 75 seconds at 3-second intervals: a card typically holds for 3-5 seconds, and
-# on Taken 2 the Fox logo alone runs past 36. SpongeBob discs are worse -- the
-# card lands after the theme song, around 40-60 seconds in.
 HEAD_FRAMES = 25
 HEAD_GRID = "5x5"
 HEAD_WINDOW = 75.0
-SCAN_FRAMES = 16  # spread across the runtime, for content and credits
+SCAN_FRAMES = 16
 SCAN_GRID = "4x4"
 
 THUMB_W = 320
@@ -28,7 +22,6 @@ THUMB_H = 180
 
 
 def ffprobe(path):
-    """Duration, dimensions, and stream layout for one file."""
     result = subprocess.run(
         [
             "ffprobe",
@@ -75,7 +68,6 @@ def ffprobe(path):
 
 
 def _ffmpeg(args, out):
-    """Run ffmpeg quietly. Returns whether it produced the file it was asked for."""
     subprocess.run(
         ["ffmpeg", "-v", "error", "-y", *args, str(out)],
         capture_output=True,
@@ -85,10 +77,9 @@ def _ffmpeg(args, out):
 
 
 def _grab(path, timestamp, out):
-    """One frame, scaled and padded to a uniform size so it can be tiled.
+    """With -ss before -i, ffmpeg does not decode the frames that it skips.
 
-    -ss before -i is input seeking: near-instant even on a 20 GB file, because
-    it never decodes the frames it skips.
+    Thus the seek is fast, also in a 20 GB file.
     """
     return _ffmpeg([
         "-ss", f"{timestamp:.2f}",
@@ -119,7 +110,6 @@ def _sheet(path, timestamps, grid, out):
 
 
 def contact_sheets(path, seconds, out_dir):
-    """A head sheet for the title card and a scan sheet for the content."""
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = path.stem
     made = {}
@@ -130,8 +120,6 @@ def contact_sheets(path, seconds, out_dir):
     if _sheet(path, head, HEAD_GRID, head_out):
         made["head"] = head_out.name
 
-    # Skip the first and last few percent: leader black and trailing black
-    # waste tiles that could be showing content.
     scan = [seconds * (0.02 + 0.96 * i / (SCAN_FRAMES - 1)) for i in range(SCAN_FRAMES)]
     scan_out = out_dir / f"{stem}--scan.png"
     if _sheet(path, scan, SCAN_GRID, scan_out):

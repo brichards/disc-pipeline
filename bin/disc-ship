@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Stage 05 -- copy the transcoded output to the NAS and prove it arrived.
+"""Copy the transcoded output of a disc to the media library, and verify the copy.
 
-The shape was decided upstream: disc-transcode produced either a movie folder
-or a bare file, matching what Plex expects. So this is a plain copy with no
-path rewriting -- plus the two checks that make it safe to run unattended.
+disc-ship copies transcoded/ with rsync, then compares checksums. It does not
+run while a transcode is incomplete, or when the library volume is not mounted.
+
+A file that already exists in the library is not overwritten, and the disc is
+held for review. --force overwrites it. When a movie folder ships and the
+library has the movie as a single file, disc-ship moves that file into the
+folder.
 """
 
 import argparse
@@ -37,9 +41,6 @@ def main():
         notify.fail(f"nothing transcoded in {work_dir / 'transcoded'} -- "
                     "run disc-transcode first")
 
-    # Shipping mid-transcode sends whatever happens to be finished and settles
-    # the bare-versus-folder shape on a partial set, which then needs undoing
-    # on the NAS when the rest lands.
     unfinished = _unfinished(plan)
     if unfinished and not args.force:
         notify.say(f"\n{plan.get('title', name)}: transcode is not finished")
@@ -64,9 +65,6 @@ def main():
 
     promotion = _promotion(source, destination)
     for bare in promotion:
-        # Promotion moves the old bare file into the folder we are about to
-        # write into, so it can create a collision the preflight below cannot
-        # see yet -- the destination does not exist at check time.
         if (source / bare.name).exists() and not args.force:
             reason = (f"{bare.name} is both on the NAS and in this shipment "
                       "-- promoting would collide")
@@ -136,13 +134,11 @@ def _ship(plan, work_dir, slug, name, source, destination, promotion, args):
 
 
 def _unfinished(plan):
-    """Kept files that have not finished transcoding."""
     return [new_name for item, _, new_name in planlib.kept(plan)
             if item.get("transcode", {}).get("status") != "done"]
 
 
 def _source(work_dir):
-    """What disc-transcode produced: a movie folder, or a bare feature file."""
     root = work_dir / "transcoded"
     if not root.is_dir():
         return None
@@ -160,12 +156,10 @@ def _library(plan, slug):
 
 
 def _promotion(source, destination):
-    """Bare files that belong inside the folder we are about to ship into.
+    """A file with an edition suffix is part of its movie for Plex.
 
-    Happens when a title shipped as a single file and a second one turned up
-    later -- an extra, or another edition. Edition suffixes count: a lone
-    `Taken (2008) {edition-Theatrical}.mkv` in the library belongs inside
-    `Taken (2008)/` once the extended cut exists.
+    Thus a single `Taken (2008) {edition-Theatrical}.mkv` in the library goes
+    into `Taken (2008)/` when the extended cut arrives.
     """
     if not source.is_dir():
         return []
@@ -195,8 +189,6 @@ def _record_shipped(slug, destination):
     if data is None:
         return
     manifest.advance(data, manifest.SHIPPED)
-    # The ledger outlives the queue directory, so where a disc ended up has to
-    # be written there, not only into the manifest.
     entry = manifest.ledger_find(data["fingerprint"]) or {}
     entry.update({
         "fingerprint": data["fingerprint"],

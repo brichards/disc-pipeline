@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""Stage 03 -- review the naming proposal, then act on it.
+"""Apply the plan.json that disc-identify wrote.
 
-Everything before this proposes; nothing before this has touched a filename.
-Decisions are written back into plan.json as you make them, so an interrupted
-review picks up where it stopped.
+disc-apply renames the kept titles and moves the rejected titles to
+rejected/.
 
-Run by hand it is a review. Run by the drainer it is --auto, which applies a
-plan only when every item came back high confidence and nothing was left
-unidentified -- so the disc stops for you exactly when there is something worth
-looking at.
+If you call disc-apply manually, each decision is written to plan.json so an
+interrupted review can resume.
 
-Files are renamed or moved aside. Nothing is ever deleted. --revert puts them
-back.
+disc-run calls disc-apply --auto. This applies the plan if each item is high
+confidence and no item is unknown. Otherwise, the disc is held for review.
+
+disc-apply never deletes a file. --revert puts each file back.
 """
 
 import argparse
@@ -75,7 +74,6 @@ def main():
         plan["auto_applied"] = manifest.now()
         args.yes = True
 
-    # A dry run reports; it does not record decisions or move files.
     persist = not args.dry_run
 
     if args.revert or args.reset:
@@ -124,9 +122,7 @@ def main():
 
 
 def _suspect_warning(slug):
-    """MakeMKV works around unreadable sectors and still exits clean, so a
-    suspect rip reaches this gate looking exactly like a good one. Say it
-    loudly here, because this is the last point before hours of transcoding."""
+    """MakeMKV reads around a sector that it cannot read, and still exits with 0."""
     data = manifest.load(slug)
     rip = data.get("rip", {})
     if not rip.get("suspect"):
@@ -154,12 +150,6 @@ def _suspect_warning(slug):
 
 
 def _auto_blockers(items):
-    """Why this plan may not be applied unreviewed.
-
-    The bar is deliberately all-or-nothing: one uncertain item means the whole
-    disc gets looked at, because the items are judged together and a doubt about
-    one is a doubt about the reading of the disc.
-    """
     blockers = []
     for item in items:
         confidence = item.get("confidence", "low")
@@ -171,13 +161,6 @@ def _auto_blockers(items):
 
 
 def _revert(plan, media_dir, work_dir, args):
-    """Put every file back where the rip left it.
-
-    Without this, --reset is a trap: it clears the decisions but leaves the
-    files renamed, so the next run looks for names that no longer exist and
-    refuses everything. Reverting is also the only way to recover a wrongly
-    rejected extra without putting the disc back in the drive.
-    """
     reject_dir = work_dir / "rejected"
     moves = []
     for item in plan.get("items", []):
@@ -230,7 +213,6 @@ def _summary(plan, name):
 
 
 def _review(plan, work_dir, media_dir, persist=True):
-    """Walk the undecided items. Returns False if the reviewer quit."""
     items = plan["items"]
     total = len(items)
     notify.say(
@@ -314,7 +296,6 @@ def _open_frames(item, work_dir):
 
 
 def _resolve_actions(plan, media_dir, work_dir):
-    """Turn decisions into concrete file operations, without performing them."""
     moves, rejects, untouched = [], [], []
     reject_dir = work_dir / "rejected"
 
@@ -366,7 +347,6 @@ def _confirm(moves, rejects, untouched, args):
 
 
 def _preflight(moves, rejects):
-    """Every operation is checked before any is performed."""
     problems = []
     claimed = {}
     for source, target, _ in moves + rejects:

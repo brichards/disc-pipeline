@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Stage 01b -- decode a suspect rip and find out whether it is actually broken.
+"""Decode each title with read errors, and find out whether it is damaged.
 
-Only runs when disc-rip flagged read errors. A clean rip exits immediately, so
-this can sit unconditionally in the chain between ripping and identifying.
+disc-verify runs after disc-rip and before disc-identify, so that no agent run
+is spent on a damaged rip. It exits at once when no title needs a check.
 
-It goes before identification deliberately: identifying costs real money and
-several minutes, and there is no sense paying that for a rip that turns out to
-be unusable.
-
-Exits non-zero when a file will not decode, which short-circuits whatever was
-chained after it.
+If a title does not decode, the disc is held and ejected. If each title
+decodes, the rip is marked verified and the disc is ejected. With --force,
+disc-verify also accepts a title that failed only its duration check, if it
+decodes clean.
 """
 
 import argparse
@@ -123,22 +121,15 @@ def _verify(data, slug, name, titles, args):
         notify.alert("Rip verification failed", f"{name}: {reason}")
         notify.say("\nClean the disc, reinsert it, and re-rip the affected "
                    "title(s) with: disc-rip --redo")
-        # Same rule as a failed rip: the remedy needs the disc in your hands,
-        # so keeping it loaded only blocks the drive.
         if not args.no_eject:
             _eject_if_still_ours(data)
         return 1
 
-    # The rip stays historically suspect; what changes is that it has now been
-    # checked. Downstream stages read this rather than the raw warning count.
     data["rip"]["verified"] = True
     manifest.save(data)
     drainer.start()
     notify.say(f"\n{name}: verified -- every checked title decodes cleanly.")
 
-    # disc-rip keeps a suspect disc in the drive because the next move is
-    # cleaning and re-ripping. Verification is what makes that unnecessary, so
-    # the eject it skipped belongs here.
     if not args.no_eject:
         _eject_if_still_ours(data)
     return 0
@@ -159,11 +150,9 @@ def _decode(title, path):
 
 
 def _overridable(data, media_dir):
-    """Titles whose rip failed only because the file's runtime was off.
+    """A title that MakeMKV failed can be cut short.
 
-    disc-rip records that mismatch only when MakeMKV finished the file. A title
-    MakeMKV itself failed may be cut short, and a cut-short file can still
-    decode cleanly, so those are never offered.
+    ffmpeg can decode a cut-short file with no error.
     """
     out = []
     for title in data.get("titles", []):
@@ -177,11 +166,6 @@ def _overridable(data, media_dir):
 
 
 def _accept(data, name, titles):
-    """Accept a title that failed its duration check, once it decodes clean.
-
-    A clean decode proves the file is intact. It does not prove the file is
-    the title that was asked for, which is why a person has to ask.
-    """
     notify.say(f"\n{name}: decode-checking {len(titles)} title(s) that failed "
                "their duration check")
     for title, path in titles:
@@ -210,12 +194,6 @@ def _accept(data, name, titles):
 
 
 def _eject_if_still_ours(data):
-    """Eject only the disc this verification was about.
-
-    By now the rip is long finished, so there is no guarantee the drive still
-    holds the same disc -- or any disc. Fingerprint before ejecting, or a
-    verification that finishes late throws out whatever was loaded next.
-    """
     for mount, kind in disc.find_discs():
         try:
             if disc.fingerprint(mount, kind) != data.get("fingerprint"):

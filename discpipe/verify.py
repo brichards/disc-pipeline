@@ -1,12 +1,6 @@
-"""Proving a suspect rip actually decodes.
+"""Decode a ripped file in full, and report the errors of its decoders.
 
-MakeMKV works around unreadable sectors and exits clean, so a damaged rip
-reaches the end of the pipeline looking exactly like a good one. Decoding every
-frame and discarding the output is the cheap, definitive answer: silence means
-the file is fine.
-
-Measured on a 33 GB, 2:24 feature: 5 minutes 14 seconds. Cheap enough to do
-automatically rather than ask.
+disc-verify uses it for each title with read errors.
 """
 
 import re
@@ -16,7 +10,6 @@ OFFSET = re.compile(r"at offset '(\d+)'")
 
 
 def read_error_offsets(warnings):
-    """Byte offsets MakeMKV reported as unreadable, in source order."""
     offsets = []
     for line in warnings or ():
         match = OFFSET.search(line)
@@ -26,11 +19,10 @@ def read_error_offsets(warnings):
 
 
 def approximate_times(offsets, size_bytes, seconds):
-    """Roughly where in the runtime those offsets fall.
+    """The ripped file is a remux of the source stream.
 
-    The ripped file is a remux of the source stream, so byte position maps to
-    time only approximately -- and less well at variable bitrate. Good enough
-    to know where to look, not good enough to quote.
+    Thus a byte position gives only an approximate time, and less accurate at
+    a variable bit rate.
     """
     if not size_bytes or not seconds:
         return []
@@ -42,15 +34,14 @@ def hms(seconds):
     return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
-# ffmpeg tags each message with the component that produced it. The null muxer
-# we discard output through reports non-monotonic timestamps at error level,
-# and DVD MPEG-2 produces those in normal playback. Only the decoders speak to
-# whether the picture and sound are intact.
+# ffmpeg starts each message with the name of the component that sent it. The
+# null muxer reports timestamps that are not monotonic at the error level, and
+# DVD MPEG-2 gives such timestamps in normal playback. Only the decoders report
+# damage to the picture and the sound.
 _MUXER_NOISE = re.compile(r"^\[null @ ")
 
 
 def decode(path, start=None, duration=None):
-    """Decode and throw the output away. Returns (ok, error_lines)."""
     command = ["ffmpeg", "-v", "error"]
     if start is not None:
         command += ["-ss", str(start)]

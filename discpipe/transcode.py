@@ -1,11 +1,7 @@
-"""Routing and running the transcoders.
+"""Choose a transcoder for a file, and run it.
 
-Both tools write their output into the current working directory, named after
-the input's basename, and refuse to overwrite an existing file. So the runner
-points them at a staging directory and moves a file into the output only once
-the tool exits cleanly. The output then holds nothing but finished files: a
-transcode killed partway leaves nothing under the final name, and a re-run
-skips what is already there.
+Both transcoders write their output into the current working directory, with
+the base name of the input. Neither one writes over a file that exists.
 """
 
 import contextlib
@@ -15,27 +11,23 @@ from pathlib import Path
 
 from . import proc, ship
 
-SD_HD = "transcode-video.rb"  # 1080p and below
-UHD = "hevc-transcode.rb"  # above 1080p
+SD_HD = "transcode-video.rb"
+UHD = "hevc-transcode.rb"
 
-# Every transcode carries all subtitle tracks through.
 COMMON_ARGS = ["--add-subtitle", "all"]
 
-# The transcoders shell out to HandBrake; without it they fail per-file rather
-# than up front, which wastes the whole queue's turn.
+# The transcoders run HandBrakeCLI. Without it, they fail on each file, not at
+# the start.
 REQUIRED = ("HandBrakeCLI", "ffprobe")
 
 
-# Discs do not carry AAC. Blu-ray allows LPCM, Dolby Digital, DD+, DTS, DTS-HD
-# and TrueHD; DVD allows AC-3, DTS, PCM and MPEG audio. So a file whose audio is
-# entirely AAC did not come off a disc -- it came out of a transcoder, and
-# running it through another one would cost hours and a generation of quality
-# for no gain.
+# A disc does not carry AAC. Blu-ray permits LPCM, Dolby Digital, DD+, DTS,
+# DTS-HD and TrueHD. DVD permits AC-3, DTS, PCM and MPEG audio. Thus a file with
+# only AAC audio came from a transcoder, not from a disc.
 TARGET_AUDIO = "aac"
 
 
 def already_encoded(info):
-    """Whether this file is already in the format transcoding would produce."""
     audio = (info or {}).get("audio") or []
     if not audio:
         return False
@@ -48,11 +40,6 @@ def staging_for(work_dir):
 
 
 def _staged(source, staging):
-    """A clear path to write source's output to before it is finished.
-
-    Anything already there was left by a run that was killed, and the
-    transcoders would refuse to overwrite it.
-    """
     staged = output_for(source, staging)
     staged.parent.mkdir(parents=True, exist_ok=True)
     staged.unlink(missing_ok=True)
@@ -60,11 +47,7 @@ def _staged(source, staging):
 
 
 def adopt_encoded(source, out_dir, staging):
-    """Put an already-encoded file into the output without re-encoding.
-
-    A hard link costs nothing and no extra space; a copy is the fallback when
-    the two are on different filesystems.
-    """
+    """A hard link uses no extra space, but only in one file system."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     destination = output_for(source, out_dir)
@@ -82,7 +65,6 @@ def adopt_encoded(source, out_dir, staging):
 
 
 def route(height):
-    """Above 1080 goes to HEVC, everything else to H.264."""
     return UHD if (height or 0) > 1080 else SD_HD
 
 
@@ -98,7 +80,6 @@ def output_for(source, out_dir):
 
 
 def run(source, out_dir, script, staging, extra_args=(), on_line=None):
-    """Transcode one file into out_dir. Returns (exit_code, output_path)."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     destination = output_for(source, out_dir)

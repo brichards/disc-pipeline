@@ -1,16 +1,8 @@
-"""Resource locks.
+"""Locks that give a shared resource to one process at a time.
 
-One optical drive, one CPU budget, one NAS link. Stages take a lock over the
-resource they monopolise so that a second invocation -- from the drainer, from
-a second terminal -- steps aside instead of competing.
-
-Non-blocking by default: a stage that cannot get its lock reports and exits, and
-the drainer picks the work up on a later pass.
-
-The lock directory is fixed per user, deliberately not under the queue root.
-These guard hardware, and the hardware does not care which queue you pointed
-at: locks under DISC_PIPELINE_ROOT gave two roots two separate namespaces, so a
-second queue would happily drive the same optical drive as the first.
+The resources are the drive, the CPU, the NAS link, the agent and the drainer
+session. The lock files are in ~/.disc-pipeline/locks, the same for each queue.
+A stage that cannot get its lock exits, and the drainer tries again later.
 """
 
 import fcntl
@@ -25,7 +17,7 @@ SESSION = "session"
 
 
 class Busy(RuntimeError):
-    """Someone else holds the lock."""
+    pass
 
 
 LOCK_DIR = Path.home() / ".disc-pipeline" / "locks"
@@ -56,12 +48,6 @@ def hold(name, blocking=False):
 
 
 def is_free(name):
-    """Whether a resource is currently unlocked.
-
-    The drainer only tracks what it started itself, so a stage run by hand --
-    or by disc-watch -- is invisible to it. Testing the lock directly keeps it
-    from launching a duplicate that would only step aside and exit.
-    """
     try:
         with hold(name):
             return True

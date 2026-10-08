@@ -1,8 +1,7 @@
-"""The naming proposal, and where a rip lives on disk.
+"""The naming plan of a disc, and the disc folder that a command acts on.
 
-plan.json is written by disc-identify and consumed by disc-apply. Decisions are
-written back into it as the review proceeds, so an interrupted review resumes
-where it stopped rather than starting over.
+disc-identify writes plan.json. disc-apply records each decision in it, and
+disc-transcode and disc-ship read the result.
 """
 
 import collections
@@ -11,29 +10,21 @@ from pathlib import Path
 
 from . import adopt as adoptlib, config, jsonfile, notify
 
-# What disc-identify proposed.
+# Values of item["action"], from disc-identify.
 FEATURE = "feature"
 EXTRA = "extra"
 REJECT = "reject"
 UNKNOWN = "unknown"
 
-# What you decided. Absent means not yet reviewed.
+# Values of item["decision"], from the review. An item with no decision is not
+# reviewed.
 ACCEPT = "accept"
 EDIT = "edit"
-DECLINE = "reject"  # reject the file regardless of what was proposed
-KEEP = "keep"  # leave the file exactly as it is
+DECLINE = "reject"
+KEEP = "keep"
 
 
 def resolve_target(value=None):
-    """Accept a queue slug, a disc folder in the queue, or nothing at all.
-
-    With no argument the current directory is the target, so you can cd into a
-    rip and run the stages bare. Returns the disc folder.
-
-    Every target ends up in one shape: a manifest, the media in raw/, and
-    everything else beside it. A folder of loose .mkv files gets there by being
-    adopted, so there is no second kind of target to reason about.
-    """
     candidate = Path.cwd() if value in (None, "") else Path(value).expanduser()
     if not candidate.is_dir():
         candidate = config.ROOT / str(value)
@@ -73,16 +64,11 @@ def save(plan, work_dir):
 
 
 def tally(plan):
-    """How many items were proposed as each action: "2 extra, 1 feature"."""
     counts = collections.Counter(item.get("action", "?") for item in plan.get("items", []))
     return ", ".join(f"{n} {action}" for action, n in sorted(counts.items()))
 
 
 def kept(plan):
-    """Items that survived review, with the name the review gave them.
-
-    Yields (item, action, new_name).
-    """
     for item in plan.get("items", []):
         action, new_name = outcome(item)
         if action in (FEATURE, EXTRA) and new_name:
@@ -94,11 +80,6 @@ def pending(plan):
 
 
 def outcome(item):
-    """What will happen to this file, after the decision is folded in.
-
-    Returns (action, new_name). An undecided item falls back to what was
-    proposed, so --yes and a completed review agree.
-    """
     decision = item.get("decision")
     if decision == DECLINE:
         return REJECT, ""
