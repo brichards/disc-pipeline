@@ -1,16 +1,13 @@
-"""Running a long job and reading its output as it arrives.
+"""Run a long job, and read its output line by line.
 
-MakeMKV, rsync and HandBrake run for minutes or hours, so output is read line
-by line rather than collected at the end. stderr is folded in because
-HandBrake writes its log there, and the log is where a failed transcode says
-why.
+HandBrake writes its log to stderr, and the log gives the cause of a failed
+transcode.
 """
 
 import subprocess
 
 
 def stream(command, on_line=None, cwd=None):
-    """Run command, hand each output line to on_line. Returns the exit code."""
     process = subprocess.Popen(
         command,
         cwd=str(cwd) if cwd else None,
