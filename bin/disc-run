@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""The drainer -- decides what happens next, and starts it.
+"""Start the next stage of each disc that is ready.
 
-Stages do not call each other. Each does its one job and advances state in the
-manifest; this reads that state and launches whatever can run. A chain is only
-as durable as its process tree, holds one process open for hours, and needs
-lock logic in every script the moment two discs are ready at once.
+disc-run reads the state in each manifest. It starts the next stage of a disc
+if the resource that the stage needs is free, then exits without a wait for
+the stages. Stages do not call each other: each stage records the new state of
+its disc, and disc-run starts the next one.
 
-Not a daemon either. `disc-run` makes one pass and exits. `disc-run --watch`
-polls until the queue has nothing left it can advance, then stops -- so it
-lives for a ripping session rather than sitting resident all year.
+With --watch, disc-run keeps the Mac awake and repeats the pass until nothing
+runs or starts for the grace period. A disc held for space, the NAS or the
+agent is retried every 10 minutes, and keeps the session open.
 """
 
 import argparse
@@ -24,15 +24,13 @@ from discpipe import config, disc, drainer, locks, manifest, notify
 
 BIN = Path(__file__).resolve().parent
 
-# state -> (stage to run, resource it monopolises)
 ACTIONS = {
     manifest.QUEUED: ("disc-rip", locks.DRIVE),
-    manifest.RIPPED: ("disc-identify", locks.AGENT),  # unless unverified
+    manifest.RIPPED: ("disc-identify", locks.AGENT),
     manifest.APPLIED: ("disc-transcode", locks.CPU),
     manifest.TRANSCODED: ("disc-ship", locks.NET),
 }
 
-# A retryable hold goes back to the stage that recorded it.
 RETRY = {
     "rip": ("disc-rip", locks.DRIVE),
     "identify": ("disc-identify", locks.AGENT),
@@ -40,25 +38,17 @@ RETRY = {
     "ship": ("disc-ship", locks.NET),
 }
 
-# Stages that stop and wait for a person. The drainer never advances past these.
 GATES = (manifest.SHIPPED, manifest.DONE)
 
-# Flags the drainer adds because nobody is watching. Run by hand these stages
-# should behave differently: disc-apply ought to ask before it acts, and the
-# transcoder's per-percent progress is worth seeing. Neither belongs in an
-# unattended run, where every line lands in the log every other disc shares.
 UNATTENDED = {
     "disc-apply": ["--auto"],
     "disc-transcode": ["--quiet"],
 }
 
-# Naming applies itself when the plan is unanimously high confidence.
-# disc-apply --auto refuses anything less and holds the disc for review, so
-# this is a gate exactly when there is something worth looking at.
 AUTO_APPLY_ACTION = ("disc-apply", locks.CPU)
 
-IDLE_GRACE = 120  # seconds with nothing to do before a session gives up
-RETRY_INTERVAL = 600  # seconds between tries at a hold that may clear itself
+IDLE_GRACE = 120
+RETRY_INTERVAL = 600
 
 
 def main():
@@ -82,9 +72,9 @@ def main():
 
 
 def _session(args):
-    running = {}  # slug -> (stage, resource, Popen)
-    failed = {}  # slug -> (stage, state) when that stage last exited non-zero
-    tried = {}  # slug -> when a retryable hold was last retried
+    running = {}
+    failed = {}
+    tried = {}
     keep_awake = None
     idle_since = None
 
@@ -116,21 +106,11 @@ def _session(args):
 
 
 def _pass(running, failed, tried, args):
-    """One sweep of the queue.
-
-    Returns how many stages were started, and how many held discs are waiting
-    to be retried.
-    """
     busy = {resource for _, resource, _ in running.values()}
-    # Anything held by a stage this session did not start -- a hand-run rip,
-    # or one disc-watch kicked off -- is busy too.
     busy |= {r for r in (locks.DRIVE, locks.CPU, locks.NET, locks.AGENT)
              if r not in busy and not locks.is_free(r)}
     started = waiting = 0
 
-    # A disc in the drive that nothing knows about yet. This is what makes
-    # disc-watch a convenience rather than a requirement -- a missed mount
-    # event costs a poll interval, not the disc.
     if locks.DRIVE not in busy:
         slug = _unqueued_disc()
         if slug and _launch(running, slug, "disc-rip", locks.DRIVE, [slug], args):
@@ -163,14 +143,12 @@ def _pass(running, failed, tried, args):
 
 
 def _next_action(data):
-    """What this disc needs, or (None, None) if it needs a person."""
     state = data.get("state")
     if state == manifest.IDENTIFIED:
         return AUTO_APPLY_ACTION
     if state in GATES:
         return None, None
 
-    # A suspect rip is decode-checked before anything is spent identifying it.
     rip = data.get("rip", {})
     if state == manifest.RIPPED and rip.get("suspect") and not rip.get("verified"):
         return "disc-verify", locks.CPU
@@ -217,7 +195,6 @@ def _reap(running, failed):
 
 
 def _unqueued_disc():
-    """The slug of a disc in the drive with no queue entry yet, or None."""
     for mount, kind in disc.find_discs():
         try:
             fingerprint = disc.fingerprint(mount, kind)
@@ -232,7 +209,7 @@ def _unqueued_disc():
 
 
 def _caffeinate():
-    """Hold off idle sleep for exactly as long as this session lives."""
+    """caffeinate -i stops idle sleep, and -w ends it when this process exits."""
     try:
         return subprocess.Popen(
             ["caffeinate", "-i", "-w", str(os.getpid())],
