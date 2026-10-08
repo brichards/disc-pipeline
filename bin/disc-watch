@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Stage 00 -- notice a disc and start work on it.
+"""Hand a new disc in the drive to a disc-run --watch session.
 
-Event-driven, not a timer: launchd only wakes this when /Volumes changes, so
-it costs nothing on the days you are not ripping. Its failure mode is benign
-and self-announcing -- if it stops working you insert a disc, nothing happens,
-and you run disc-run --watch by hand.
+launchd runs disc-watch when /Volumes changes, from the LaunchAgent that
+--install writes. A disc that is already in the ledger is ejected instead. If a
+session is already open, the session finds the disc on its next pass.
 
-Everything it starts is detached and logged, so ejecting the disc and feeding
-the next one does not require watching a terminal.
+If disc-watch does not run, nothing happens when you insert a disc. Start
+disc-run --watch by hand.
 """
 
 import argparse
@@ -76,8 +75,6 @@ def _check():
         return 0
     mount, kind = discs[0]
 
-    # If a rip is already running, this firing is the eject or some unrelated
-    # volume change. Nothing to do.
     try:
         with locks.hold(locks.DRIVE):
             pass
@@ -111,8 +108,8 @@ def _install():
             label=AGENT_LABEL,
             script=BIN / "disc-watch",
             log=config.ROOT / "watch.log",
-            # launchd does not inherit a shell PATH, and every stage shells out
-            # to ffmpeg, rsync, and the claude CLI.
+            # launchd does not give a job the PATH of your shell. The stages need
+            # ffmpeg, rsync and the claude CLI on the PATH.
             path=os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         ),
         encoding="utf-8",
