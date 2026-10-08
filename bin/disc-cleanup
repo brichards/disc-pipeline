@@ -186,11 +186,10 @@ def _offer_source(entry, args):
 
     if height > MASTER_HEIGHT:
         notify.say(f"    {height}p source -- kept automatically. Not offered.")
-        if entry["manifest"]:
-            entry["manifest"]["keep_source"] = "always"
-            manifest.save(entry["manifest"])
+        entry["manifest"]["keep_source"] = "always"
+        manifest.save(entry["manifest"])
         return 0
-    if entry.get("manifest", {}) and entry["manifest"].get("keep_source") == "always":
+    if entry["manifest"].get("keep_source") == "always":
         notify.say("    keep_source is 'always' for this disc. Not offered.")
         return 0
 
@@ -250,10 +249,9 @@ def _offer_remainder(entry, args):
     # about to be deleted. If the delete then fails, the state goes back --
     # "done" must never describe a disc whose folder is still sitting there,
     # or nothing will offer it again.
-    if entry["slug"]:
-        _finish(entry)
+    _finish(entry)
     freed = _delete(root, size)
-    if not freed and entry["slug"] and root.exists():
+    if not freed and root.exists():
         manifest.advance(entry["manifest"], manifest.SHIPPED)
         notify.say("    left as shipped, so it will be offered again")
     return freed
