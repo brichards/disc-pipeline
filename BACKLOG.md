@@ -10,6 +10,14 @@ commits that Claude co-authored changed it: 64 lines added and 23 removed.
 Review each of those changes against the tuned version, then write the README
 in STE.
 
+Expand the "Decoy discs" section with this text:
+
+> Studios like Lionsgate use playlist obfuscation to make Blu-ray copying
+> harder. The [MakeMKV forum's Blu-ray
+> section](https://forum.makemkv.com/forum/viewforum.php?f=8) keeps a thread
+> for most obfuscated titles. Searching for "[title] mpls
+> site:forum.makemkv.com" usually finds the right playlist number.
+
 ## Remove triage.select_feature
 
 `triage.select_feature` has no caller in `bin/`, `discpipe/` or `tests/`.
