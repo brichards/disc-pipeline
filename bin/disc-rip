@@ -443,7 +443,6 @@ def _title_record(title):
         "resolution": title.resolution,
         "audio_tracks": len(title.audio),
         "subtitle_tracks": len(title.subtitles),
-        "state": "ripped",
     }
 
 
