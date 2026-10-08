@@ -173,8 +173,7 @@ def _run(args, discs):
 
     if not todo:
         notify.say("\nEverything on this disc is already ripped.")
-        return _finish(data, label, kind, slug, fingerprint, raw_dir,
-                       0, 0, len(have), mount, args)
+        return _finish(data, 0, 0, len(have), mount, args)
 
     needed = disc.estimated_bytes(todo) + config.SPACE_HEADROOM_BYTES
     available = disc.available_bytes(config.ROOT)
@@ -243,8 +242,7 @@ def _run(args, discs):
             detail = record["rip"].get("error") or f"exit {code}"
             notify.say(f"  ! failed ({detail}) -- continuing")
 
-    return _finish(data, label, kind, slug, fingerprint, raw_dir,
-                   done, failed, len(have), mount, args)
+    return _finish(data, done, failed, len(have), mount, args)
 
 
 # A ripped title is checked by its runtime, never by its size. Size was tried
@@ -371,8 +369,7 @@ def _stored_titles(data):
             for r in data["titles"]]
 
 
-def _finish(data, label, kind, slug, fingerprint, raw_dir,
-            done, failed, skipped, mount, args):
+def _finish(data, done, failed, skipped, mount, args):
     warnings = [w for r in data["titles"] for w in r.get("rip", {}).get("warnings", [])]
     data["rip"]["warnings"] = warnings
     data["rip"]["ripped_at"] = manifest.now()
@@ -388,16 +385,16 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
                   if r.get("rip", {}).get("status") == "failed"]
         reason = f"{failed} title(s) failed: {', '.join(str(b) for b in broken)}"
         _park(data, reason, mount, args)
-        notify.alert("Rip incomplete", f"{label}: {reason}")
+        notify.alert("Rip incomplete", f"{data['label']}: {reason}")
         notify.say("Clean the disc, reinsert it, and only the failed titles "
                    "are retried.")
         if any(str(r.get("rip", {}).get("error", "")).startswith("output runs")
                for r in data["titles"]):
             notify.say("A title that failed only its duration check can be "
-                       f"accepted as it is: disc-verify {slug} --force")
+                       f"accepted as it is: disc-verify {data['slug']} --force")
         return 1
 
-    _record_in_ledger(data, label, kind, slug, fingerprint)
+    _record_in_ledger(data)
 
     # A clean exit code is not a clean rip. MakeMKV retries a bad sector, works
     # around it, and still returns zero -- leaving a glitched file and no error.
@@ -407,7 +404,7 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
         drainer.start()
         notify.alert(
             "Rip finished with warnings",
-            f"{label}: {len(warnings)} read problem(s) -- check the tail",
+            f"{data['label']}: {len(warnings)} read problem(s) -- check the tail",
         )
         notify.say("Disc left in the drive pending disc-verify, which ejects "
                    "it either way once it has ruled.")
@@ -415,19 +412,19 @@ def _finish(data, label, kind, slug, fingerprint, raw_dir,
 
     manifest.advance(data, manifest.RIPPED)
     drainer.start()
-    notify.say(f"Ripped to {raw_dir}")
+    notify.say(f"Ripped to {manifest.disc_dir(data['slug']) / 'raw'}")
     _eject(mount, args)
     return 0
 
 
-def _record_in_ledger(data, label, kind, slug, fingerprint):
-    if manifest.ledger_find(fingerprint):
+def _record_in_ledger(data):
+    if manifest.ledger_find(data["fingerprint"]):
         return
     manifest.ledger_append({
-        "fingerprint": fingerprint,
-        "label": label,
-        "disc_type": kind,
-        "slug": slug,
+        "fingerprint": data["fingerprint"],
+        "label": data["label"],
+        "disc_type": data["disc_type"],
+        "slug": data["slug"],
         "first_seen": data["created"],
         "shipped_as": None,
     })
