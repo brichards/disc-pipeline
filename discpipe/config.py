@@ -1,9 +1,4 @@
-"""Paths, tunables, and the environment check.
-
-Everything the pipeline needs to locate lives here so a broken assumption is
-fixed in one place. Nothing outside the standard library is imported anywhere
-in this project -- see check_environment() for why that matters.
-"""
+"""Paths, settings and the environment check."""
 
 import os
 import shutil
@@ -12,59 +7,39 @@ from pathlib import Path
 
 MIN_PYTHON = (3, 9)
 
-# Queue root. One subdirectory per disc, plus the two global files below.
 ROOT = Path(os.environ.get("DISC_PIPELINE_ROOT", "~/Movies/Rips")).expanduser()
 
 LEDGER = ROOT / "ledger.jsonl"
 OVERRIDES = ROOT / "overrides.json"
 
-# Where finished media ends up. Movies with extras ship as a folder; a feature
-# with no kept extras ships as a bare file. Overridable so the ship stage can
-# be exercised against a scratch volume.
 NAS_ROOT = Path(os.environ.get("DISC_PIPELINE_NAS", "/Volumes/Media")).expanduser()
 NAS_MOVIES = NAS_ROOT / "Movies"
 NAS_TV = NAS_ROOT / "TV Shows"
 
 MAKEMKVCON = Path("/Applications/MakeMKV.app/Contents/MacOS/makemkvcon")
 
-# Shortest title worth ripping.
-#
-# Four minutes. The policy is that extras under five minutes aren't wanted, so
-# there is no value in ripping them only to reject them at the review gate --
-# but a hard floor at exactly 300s clips things that are five minutes in
-# spirit. On Warm Bodies it dropped 00557.m2ts at 4:43, sitting between two
-# siblings of the same featurette block that were kept (00556 at 5:07, 00558
-# at 12:38). 240s buys that margin back.
-#
-# Raise it if too much junk starts reaching the review gate.
 MIN_TITLE_LENGTH = 240
 
-# Free space required before a rip: MakeMKV's own size estimate plus headroom.
 SPACE_HEADROOM_BYTES = 10 * 1000**3
 
-# Session polling interval, in seconds.
 POLL_INTERVAL = 30
 
-# A disc is a feature-length candidate if it runs at least this long.
 FEATURE_MIN_SECONDS = 60 * 60
 
-# Decoy detection. Titles within this fraction of the longest title that also
-# draw on the same segment pool form a cluster; more than the threshold means
-# the disc is using playlist obfuscation and cannot be triaged on metadata.
 DECOY_DURATION_TOLERANCE = 0.10
 DECOY_CLUSTER_THRESHOLD = 6
 
-# Cluster members must draw on the same pool of stream segments as the longest
-# title. This is what keeps a TV season disc -- several similar-length titles
-# with disjoint segments -- from reading as an obfuscated movie.
+# A TV season disc has several titles of similar length, and each title uses
+# different segments. Because of this overlap, triage does not identify such a
+# disc as a decoy disc.
 DECOY_SEGMENT_OVERLAP = 0.5
 
 
 def check_environment():
-    """Fail loudly and specifically rather than mysteriously.
+    """launchd does not give a job the PATH of your shell.
 
-    launchd does not inherit your shell's PATH, so a missing tool here shows up
-    as a stage that silently never advances. Every entry point calls this first.
+    If a tool is not on the PATH of the job, the stage does not advance and
+    shows no error.
     """
     problems = []
 
