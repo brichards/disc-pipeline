@@ -10,6 +10,18 @@ commits that Claude co-authored changed it: 64 lines added and 23 removed.
 Review each of those changes against the tuned version, then write the README
 in STE.
 
+## Remove triage.select_feature
+
+`triage.select_feature` has no caller in `bin/`, `discpipe/` or `tests/`.
+
+## Show the correct retry command in disc-status
+
+For each retryable hold, `disc-status` shows `disc-rip` as the command. A
+retryable hold can also come from `disc-identify`, when the agent is not
+available, or from `disc-ship`, when the NAS is not mounted. `held_stage`
+records the stage. The code shows this problem. Nobody has seen it in
+operation.
+
 ## CONTRIBUTING
 
 Covers running the tests and the conventions: one thought per commit, one
