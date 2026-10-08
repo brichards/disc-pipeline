@@ -1,6 +1,7 @@
 # disc-pipeline
 
-`BACKLOG.md` holds the ordered plan. Reference item IDs (`DP-04`) in commits.
+`BACKLOG.md` holds the open items, in the order to work them. An item has no ID.
+The pull request that completes an item deletes it from `BACKLOG.md`.
 
 ## Documentation
 
@@ -74,6 +75,7 @@ here reaches a running pipeline.
 - One thought per commit, one branch per change.
 - Merge with `--no-ff`, then delete the branch.
 - Non-verbose subject lines. Body carries the reasoning.
+- A commit subject has no item ID.
 
 ## Verifying a change
 
