@@ -265,6 +265,14 @@ second run refused the folder: "has no manifest and no .mkv files". A folder
 inside a disc folder, such as `raw/`, had the same result. A stage now refuses
 each folder that is not a disc folder in the queue.
 
+## DP-29 — disc-cleanup counts free space differently — `done`
+
+DP-22 changed `disc-rip` and `disc-status` to count available space as Finder
+counts it. `disc-cleanup` still showed the free space from `statvfs`. That
+number is smaller when macOS can purge files. Each command now calls
+`disc.available_bytes`. A test fails if a different command or module reads
+the space itself.
+
 ## DP-06 — Simplify the three largest commands — `todo`
 
 `disc-rip` (406), `disc-apply` (402), `disc-cleanup` (372) of 4,298 total.

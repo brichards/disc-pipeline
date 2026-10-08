@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discpipe import config, manifest, notify, plan as planlib, probe, ship
+from discpipe import config, disc, manifest, notify, plan as planlib, probe, ship
 
 # Above this, the source is a master worth keeping regardless -- re-ripping a
 # UHD disc to recover it is not a trade anyone wants to make twice.
@@ -54,12 +54,9 @@ def main():
                    "Nothing was deleted.")
     elif freed:
         notify.say(f"\nReclaimed {notify.human_bytes(freed)}.")
-    notify.say(f"{notify.human_bytes(_free())} free on {config.ROOT}.")
+    available = disc.available_bytes(config.ROOT)
+    notify.say(f"{notify.human_bytes(available)} available on {config.ROOT}.")
     return 0
-
-
-def _free():
-    return shutil.disk_usage(config.ROOT).free
 
 
 def _candidates(target):
