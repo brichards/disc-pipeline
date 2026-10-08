@@ -1,13 +1,13 @@
-"""Driving makemkvcon and parsing its robot-mode output.
+"""Run makemkvcon, and parse its robot-mode output.
 
-Robot mode emits one record per line:
+Robot mode gives one record on each line:
 
     TINFO:<title>,<attr>,<code>,"<value>"
     SINFO:<title>,<stream>,<attr>,<code>,"<value>"
     MSG:<code>,<flags>,<count>,"<rendered>","<format>",<params...>
 
-The attribute numbers below were read off real output from a RED 2 disc rather
-than taken from documentation, because they are not stable enough to guess.
+MakeMKV does not document the attribute numbers below. They come from the
+real output of a RED 2 disc.
 """
 
 import re
@@ -16,18 +16,16 @@ from dataclasses import dataclass, field
 
 from . import config, proc
 
-# TINFO attributes.
 T_NAME = 2
 T_CHAPTERS = 8
 T_DURATION = 9
 T_SIZE_HUMAN = 10
 T_SIZE_BYTES = 11
-T_SOURCE_FILE = 16  # the .mpls (Blu-ray) or .m2ts backing this title
+T_SOURCE_FILE = 16  # the .mpls (Blu-ray) or .m2ts file of the title
 T_SEGMENT_COUNT = 25
 T_SEGMENT_MAP = 26
 T_OUTPUT_NAME = 27
 
-# SINFO attributes.
 S_TYPE = 1  # "Video" / "Audio" / "Subtitles"
 S_LAYOUT = 2  # "Surround 7.1"
 S_LANG = 3
@@ -42,9 +40,8 @@ _SINFO = re.compile(r'^SINFO:(\d+),(\d+),(\d+),\d+,"(.*)"$')
 _DRV = re.compile(r'^DRV:\d+,(\d+),\d+,\d+,"([^"]*)","([^"]*)","([^"]*)"$')
 _MSG = re.compile(r'^MSG:(\d+),\d+,\d+,"(.*?)",')
 
-# MakeMKV reports a bad read, works around it, and still exits zero. Match on
-# text rather than message codes -- the codes vary by failure mode, the wording
-# does not.
+# MakeMKV reads around a bad sector and still exits with 0. Its message codes
+# change with the type of failure, but its words do not.
 _TROUBLE = re.compile(
     r"corrupt|invalid|work around|read error|failed to (open|read|save)"
     r"|hash (check|mismatch)|scsi error",
@@ -128,8 +125,6 @@ class DiscInfo:
 
 
 def parse(text):
-    """Turn a robot-mode dump into a DiscInfo. Pure -- no subprocess, so it can
-    be pointed at a saved dump for testing."""
     titles = {}
     streams = {}
     info = DiscInfo()
@@ -192,7 +187,6 @@ def parse(text):
 
 
 def scan(disc=0, min_length=config.MIN_TITLE_LENGTH):
-    """Enumerate titles. Returns (DiscInfo, raw_output)."""
     result = subprocess.run(
         [
             str(config.MAKEMKVCON),
@@ -210,14 +204,7 @@ def scan(disc=0, min_length=config.MIN_TITLE_LENGTH):
 
 
 def rip(disc, title_index, out_dir, min_length, on_line=None):
-    """Rip one title, streaming output so trouble is caught as it happens.
-
-    Returns (exit_code, warnings, transcript). A zero exit code is not
-    sufficient: MakeMKV works around unreadable sectors and still reports
-    success, which yields a glitched file and no error. Callers must check the
-    warnings list. The transcript is kept so a failure can be diagnosed without
-    re-reading the disc.
-    """
+    """An exit code of 0 does not mean a clean file. Also check the warnings."""
     out_dir.mkdir(parents=True, exist_ok=True)
     warnings = []
     transcript = []
