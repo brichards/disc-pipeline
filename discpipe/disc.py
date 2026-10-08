@@ -1,10 +1,4 @@
-"""Finding a disc in the drive and identifying it without reading its video.
-
-AACS encrypts the .m2ts payloads but not the filesystem, and CSS does the same
-on DVD -- so filenames and sizes are readable with no key, no decryption, and
-no MakeMKV spin-up. That is enough to fingerprint a disc, which is all we need
-to know whether it has been ripped before.
-"""
+"""Find, identify and eject the disc in the drive, and measure the space for a rip."""
 
 import hashlib
 import re
@@ -24,8 +18,7 @@ _MARKERS = {
     DVD: Path("VIDEO_TS/VIDEO_TS.IFO"),
 }
 
-# Files whose names and sizes form the fingerprint. Segment sizes are
-# effectively a per-authoring signature.
+# Each authoring of a disc has its own set of segment sizes.
 _FINGERPRINT_GLOBS = {
     BLURAY: ("BDMV/STREAM/*.m2ts", "BDMV/PLAYLIST/*.mpls"),
     DVD: ("VIDEO_TS/*.VOB", "VIDEO_TS/*.IFO"),
@@ -40,23 +33,14 @@ def disc_type(mount):
 
 
 def find_discs():
-    """Every mounted volume holding video media we can actually read."""
     return [(mount, kind) for mount, kind in _marked() if _readable(mount, kind)]
 
 
 def stale_mounts():
-    """Volumes that look like a disc but whose media cannot be read.
-
-    Reported rather than skipped in silence: one of these looks exactly like a
-    loaded disc to anything checking for BDMV, so a caller finding no disc
-    while Finder shows one deserves to be told why. Clearing it takes a
-    diskutil unmount, which is the user's call to make, not ours.
-    """
     return [mount for mount, kind in _marked() if not _readable(mount, kind)]
 
 
 def _marked():
-    """Mounted volumes carrying a Blu-ray or DVD marker file."""
     found = []
     if not VOLUMES.exists():
         return found
@@ -71,13 +55,10 @@ def _marked():
 
 
 def _readable(mount, kind):
-    """Whether the volume's stream files can be listed.
+    """macOS can keep the mount point after the disc goes out of the drive.
 
-    macOS leaves the mount point behind when a disc is ejected out from under
-    it or the drive drops the media: the volume still appears under /Volumes
-    and its marker file still stats, but every read returns EIO. Listing one
-    stream file is the cheapest thing that separates loaded media from that
-    leftover, and it is the same access fingerprint() needs a moment later.
+    The volume stays in /Volumes and stat() of its marker file succeeds, but
+    each read fails with EIO.
     """
     for pattern in _FINGERPRINT_GLOBS[kind]:
         try:
@@ -89,6 +70,11 @@ def _readable(mount, kind):
 
 
 def fingerprint(mount, kind):
+    """AACS and CSS encrypt the video of a disc, but not its file system.
+
+    Thus the names and sizes of the files are available with no key and no
+    MakeMKV scan.
+    """
     digest = hashlib.sha256()
     entries = []
     for pattern in _FINGERPRINT_GLOBS[kind]:
@@ -106,16 +92,14 @@ def fingerprint(mount, kind):
 
 
 def slugify(label, fingerprint_hex):
-    """Queue directory name: readable, unique, filesystem-safe."""
     text = unicodedata.normalize("NFKD", label or "disc")
     text = text.encode("ascii", "ignore").decode("ascii").lower()
     text = re.sub(r"[^a-z0-9]+", "-", text).strip("-") or "disc"
     return f"{text}-{fingerprint_hex[:6]}"
 
 
-# Finder's "available" is free space plus whatever macOS will purge on demand
-# for something the user asked for, read from Foundation. osascript reaches
-# Foundation without adding a dependency.
+# Finder shows the free space plus the space that macOS can purge for a request
+# from the user. Foundation gives this value, and osascript can read it.
 _AVAILABLE = """
 ObjC.import("Foundation");
 function run(argv) {
@@ -127,7 +111,6 @@ function run(argv) {
 
 
 def available_bytes(path):
-    """Room for a write, as Finder counts it. Free space if macOS cannot say."""
     path = Path(path)
     while not path.exists() and path != path.parent:
         path = path.parent
@@ -142,17 +125,15 @@ def available_bytes(path):
 
 
 EJECT_ATTEMPTS = 6
-EJECT_PAUSE = 5  # seconds
+EJECT_PAUSE = 5
 
 
 def eject(mount):
-    """Spit the disc out so the next one can go in unattended.
+    """diskutil does not eject a disc while a process has it open.
 
-    Returns (ejected, why not). diskutil refuses while anything has the disc
-    open, and something often does for a moment after a rip, so a refusal is
-    retried. drutil is the fallback for a disc already unmounted but still in
-    the drive; it exits 0 whether or not it ejected anything, so only the
-    drive's own report counts for it.
+    After a rip, a process often has the disc open for a short time. drutil can
+    eject a disc that is unmounted but still in the drive. drutil exits with 0
+    also when it ejects nothing, so only drutil status shows the result.
     """
     refusal = ""
     for attempt in range(EJECT_ATTEMPTS):
@@ -180,7 +161,6 @@ def _run(command):
 
 
 def _refusal(result):
-    """The line where diskutil names whatever held the disc, if it did."""
     if result is None:
         return ""
     lines = [line.strip() for line in (result.stdout + result.stderr).splitlines()
