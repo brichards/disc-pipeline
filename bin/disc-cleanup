@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Stage 06 -- reclaim the disk, once there is proof the media is safe elsewhere.
+"""Offer to delete the files of each shipped disc, after a new check of the library copy.
 
-Deliberately not chained to shipping. You cannot know whether to keep a source
-in the minute the transfer finishes: the interlaced-cartoon case only surfaces
-once you watch the result, and that is exactly when you want the raw file still
-sitting there. So this runs whenever you get to it, over everything that has
-shipped.
+disc-cleanup is the only command that deletes a rip, a transcode or a disc
+folder, and it asks before each delete. For each disc, it offers the
+transcoded output, then the source rip, then the disc folder. It never offers
+a source above 1080p.
 
-Nothing is deleted without a yes, per disc and per folder. Source and
-transcoded output are asked about separately, because the case that actually
-comes up is discarding a bad transcode while keeping the source to retry.
+disc-run does not start disc-cleanup. A problem in a transcode can show only
+when you watch the result, and you want the source then.
 """
 
 import argparse
@@ -21,8 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from discpipe import config, disc, manifest, notify, plan as planlib, probe, ship
 
-# Above this, the source is a master worth keeping regardless -- re-ripping a
-# UHD disc to recover it is not a trade anyone wants to make twice.
 MASTER_HEIGHT = 1080
 
 
@@ -60,7 +56,6 @@ def main():
 
 
 def _candidates(target):
-    """Discs that have shipped, whether queue entries or loose directories."""
     out = []
     names = [target] if target else None
 
@@ -97,10 +92,6 @@ def _consider(entry, args):
     notify.say(f"\n{'=' * 60}\n{entry['name']}")
     notify.say(f"  shipped to  {entry['destination']}")
 
-    # Verification compares the transcoded copy against the library, so it only
-    # applies while that copy still exists. What is left after it has gone is
-    # metadata and rejected files -- neither has a counterpart on the NAS, so
-    # there is nothing to prove before removing them.
     if entry["transcoded"].exists():
         local = _size(entry["transcoded"])
         notify.say(f"  verifying {notify.human_bytes(local)} against the NAS "
@@ -133,11 +124,6 @@ def _consider(entry, args):
 
 
 def _reverify(entry):
-    """Never offer to delete anything without re-proving the copy right now.
-
-    The ship-time check is not enough: that was then, and a NAS can lose a file
-    between then and now.
-    """
     source = entry["transcoded"]
     folders = [p for p in source.iterdir() if p.is_dir()] if source.is_dir() else []
     if folders:
@@ -194,9 +180,6 @@ def _offer_source(entry, args):
         return 0
 
     if entry.get("auto_applied"):
-        # Deleting the source is the point of no return for a naming mistake:
-        # after this, recovering a wrongly rejected extra means the disc goes
-        # back in the drive. Worth saying when nobody checked the names.
         notify.say("    NOTE: this disc was named automatically and never")
         notify.say("    reviewed. Deleting the source makes a naming mistake")
         notify.say("    expensive to undo -- spot-check the library first.")
@@ -210,14 +193,6 @@ def _offer_source(entry, args):
 
 
 def _offer_remainder(entry, args):
-    """The disc folder itself, once the media is gone.
-
-    What is left is the record of the work: the manifest, the plan and its
-    evidence, contact sheets, logs -- and anything still sitting in rejected/.
-    None of it is recoverable from the library, but none of it is needed there
-    either: the ledger keeps what the disc was and where it went, and the
-    library keeps the result.
-    """
     root = entry["root"]
     if entry["source"].exists() or entry["transcoded"].exists():
         return 0
@@ -230,8 +205,6 @@ def _offer_remainder(entry, args):
     notify.say(f"\n  Everything else      {notify.human_bytes(size)}")
     notify.say(f"    {root}")
     if rejects:
-        # Files you decided against but may never have looked at. Worth naming
-        # rather than sweeping up silently.
         notify.say(f"    Includes {len(rejects)} rejected file(s) "
                    f"({notify.human_bytes(_size(root / 'rejected'))}):")
         for one in rejects[:5]:
@@ -245,10 +218,6 @@ def _offer_remainder(entry, args):
     if not _ask("  Delete the disc folder?"):
         return 0
 
-    # The ledger is written first, because it draws on the manifest that is
-    # about to be deleted. If the delete then fails, the state goes back --
-    # "done" must never describe a disc whose folder is still sitting there,
-    # or nothing will offer it again.
     _finish(entry)
     freed = _delete(root, size)
     if not freed and root.exists():
@@ -282,11 +251,6 @@ def _ask(question):
 
 
 def _refuse(path):
-    """Why this path must not be deleted, or None if it may be.
-
-    The only code in this project that removes anything, so it re-establishes
-    every precondition itself rather than trusting the caller that found it.
-    """
     try:
         resolved = path.resolve()
     except OSError as exc:
@@ -298,21 +262,18 @@ def _refuse(path):
     try:
         resolved.relative_to(root)
     except ValueError:
-        # resolve() has already followed any symlink, so a link pointing out of
-        # the queue is caught here rather than followed into someone's library.
+        # resolve() follows each symlink. Thus a symlink to a location outside
+        # the queue fails this check.
         return f"{resolved} is outside {root}"
 
-    # Provenance: something the pipeline itself wrote has to be adjacent, or
-    # this is not a directory the pipeline created and has no business removing.
     if not _pipeline_made(resolved):
         return f"{resolved} has no disc-pipeline artifact beside it"
     return None
 
 
 def _pipeline_made(resolved):
-    """Whether the pipeline built this path, or the directory holding it."""
     if (resolved / "manifest.json").exists():
-        return True  # the disc folder itself
+        return True
     parent = resolved.parent
     return (parent / "manifest.json").exists() or (parent / "plan.json").exists()
 
@@ -337,11 +298,6 @@ def _delete(path, size):
 
 
 def _finish(entry):
-    """Record the disc in the ledger before its folder goes.
-
-    The ledger is the only thing that survives cleanup, so it has to be written
-    while the manifest it draws from is still there.
-    """
     data = entry["manifest"]
     manifest.advance(data, manifest.DONE)
     fingerprint = data.get("fingerprint")
