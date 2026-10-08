@@ -108,6 +108,24 @@ Four defects surfaced, all in code nothing covered:
   `warnings.append` left the suite green, on the one signal that tells a
   glitched rip from a clean one.
 
+## DP-06 — Simplify the three largest commands — `done`
+
+The work had two pull requests. #20 changed the code of the commands, with no
+change in behavior: 15 files, 45 lines added and 80 removed. The second pull
+request applied the comment rules in Standards to each file in `bin/` and
+`discpipe/`, with one commit for each file. The text that stays is in STE.
+Each commit message keeps the reasons and the history that its commit removed.
+
+| Lines in `bin/` and `discpipe/` | Before #20 | After |
+| --- | --- | --- |
+| Docstring | 542 | 263 |
+| Comment | 178 | 47 |
+| Code | 3,115 | 3,100 |
+
+DP-06 did not make a shared function for the three `_offer_*` functions in
+`disc-cleanup`. A draft made the file longer and the steps for the disc folder
+harder to read.
+
 ## DP-07 — Rewrite the README — `done`
 
 Rewritten on main (756bb9e): 544 lines down to 379, structure reordered, the
@@ -281,22 +299,12 @@ retry now uses the titles that the first scan wrote to the manifest. A
 different disc gets its own scan. `--redo`, `--playlist` and `--dry-run`
 always scan, because each one changes what `disc-rip` does.
 
-## DP-06 — Simplify the three largest commands — `todo`
+## DP-31 — Write the README in STE — `todo`
 
-`disc-rip` (406), `disc-apply` (402), `disc-cleanup` (372) of 4,298 total.
-
-Includes the prose pass: delete comments failing the Standards bar, and the
-27 one-line functions that add no meaning. `_free()` in disc-cleanup and the
-9-line `MIN_TITLE_LENGTH` comment in config.py are the reference cases.
-
-Carried over from DP-05:
-
-- `disc-cleanup`'s three `_offer_*` functions share a prelude (path, exists,
-  size) and a postlude (dry run, ask, delete).
-- `resolve_target` returns a four-tuple, and three commands follow it with
-  `planlib.load`. A `Target` object would replace both; a five-tuple would
-  not.
-- `bin/disc-apply` imports `config` and never uses it.
+You tuned the README by hand in `756bb9e`, on 2026-09-19. After that, 12
+commits that Claude co-authored changed it: 64 lines added and 23 removed.
+Review each of those changes against the tuned version, then write the README
+in STE.
 
 ## DP-08 — CONTRIBUTING — `todo`
 
