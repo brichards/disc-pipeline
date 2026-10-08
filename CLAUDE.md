@@ -27,6 +27,9 @@ was considered and rejected — these go in the commit message.
 
 No comment restates the code or a name.
 
+Comments and tests stay evergreen. Neither one justifies a choice or tells a
+history.
+
 ## Tests
 
 pytest, a development dependency. The runtime stays standard library only, so
@@ -51,6 +54,8 @@ Two meanings, one name each:
 
 - `--redo` repeats work already marked done.
 - `--force` overrides a refusal.
+
+A renamed flag gets no alias, because the project has no outside users yet.
 
 ## This checkout runs the pipeline
 

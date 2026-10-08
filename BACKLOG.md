@@ -5,36 +5,6 @@ except DP-12, which depends on nothing.
 
 Status: `todo`, `doing`, `done`. Reference the ID in commit messages.
 
-## Standards
-
-Adopted 2026-08-26 after Elliot Smith, *Engineering Theatre*.
-
-**Comments explain external reality, not our decisions.** MakeMKV's
-undocumented attribute IDs, macOS leaving mount points behind, Blu-ray never
-carrying AAC -- keep these. Why a threshold is 240 rather than 300, what
-incident prompted a change, what we considered and rejected -- these go in the
-commit message. Default to no comment; new ones carry a high bar.
-
-**Assume a competent reader.** Nothing that restates the code or a name.
-
-**Tests: would we add this one if we had none today?** No coverage targets.
-A test earns its place by catching a failure that has happened or plausibly
-will.
-
-**Comments and tests must be evergreen.** Neither exists to justify a choice
-or narrate history.
-
-Current state, for measuring against: 2,859 code lines carry 684 lines of
-comment and docstring, and the README is 517 lines.
-
-## Decisions
-
-- License: MIT.
-- Tests: pytest, a development dependency. The runtime stays stdlib-only.
-- Flags: renamed cleanly, no aliases. There are no outside users yet.
-- The README's "zero dependencies" claim is false and comes out. The project
-  needs MakeMKV, FFmpeg, HandBrakeCLI, the transcoder scripts and Claude Code.
-
 ---
 
 ## DP-01 — LICENSE — `done`
