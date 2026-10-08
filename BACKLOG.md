@@ -18,6 +18,30 @@ Expand the "Decoy discs" section with this text:
 > for most obfuscated titles. Searching for "[title] mpls
 > site:forum.makemkv.com" usually finds the right playlist number.
 
+## Take each command's --help description from its docstring
+
+Each command now states its purpose three different ways: in `--help`, in its
+module docstring and in the README. `argparse` can take its description from
+the module docstring, so the two cannot differ. The command's README section
+then starts with the same sentence.
+
+## Test the README flag tables against the commands
+
+A test compares the flag table of each command in the README with the flags
+that `argparse` defines. At this time, the two agree for each command.
+
+## Add usage examples to --help
+
+An `argparse` epilog shows the same usage examples as the README section of
+the command.
+
+## Move the command docs into docs/
+
+When the README gets too long, the README keeps the overview, the install
+steps and a quick start. Each command gets one page in `docs/`. Use `docs/`,
+not a GitHub wiki: a pull request cannot change a wiki with the code, and a
+clone does not include the wiki.
+
 ## Remove triage.select_feature
 
 `triage.select_feature` has no caller in `bin/`, `discpipe/` or `tests/`.
