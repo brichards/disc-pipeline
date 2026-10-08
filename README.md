@@ -54,6 +54,7 @@ Media files are named according to [Plex's naming rules](https://support.plex.tv
 ## Current Limitations
 
 - **Movies only.** Manifests carry a media type and `disc-ship` would route TV to `TV Shows/`, but nothing identifies episodes yet.
+- **Only folders in the queue.** A stage refuses a folder outside the queue. Move the folder into the queue first.
 - **Identification requires Claude Code.** `disc-identify` currently calls the `claude` CLI to write `plan.json`, which every later stage reads. A fully manual mode and support for other agents are planned.
 
 ## Requirements
@@ -149,7 +150,7 @@ tail -f ~/Movies/Rips/watch.log
 
 ### By hand
 
-Every stage runs on its own. Stages that act on a disc accept a directory or disc slug and default to the current directory:
+Every stage runs on its own. A stage that acts on a disc accepts a disc slug or a disc folder in the queue. With no target, the stage uses the current directory:
 
 ```
 cd ~/Movies/Rips/sample-movie-f49b43
@@ -159,7 +160,7 @@ disc-transcode
 disc-ship
 ```
 
-A folder of `.mkv` files ripped some other way works too: point any stage at it and it becomes a tracked disc directory, retaining its original name.
+You can also use a folder of `.mkv` files from a different rip. Move the folder into the queue, then point a stage at it. The folder becomes a tracked disc folder and keeps its name.
 
 A stage run by hand that moves a disc forward starts a `disc-run --watch` session to carry it on, unless one is already running.
 

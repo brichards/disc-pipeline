@@ -18,7 +18,7 @@ from discpipe import config, locks, manifest, notify, plan as planlib, ship
 def main():
     parser = argparse.ArgumentParser(description="Ship a transcoded rip to the NAS.")
     parser.add_argument("target", nargs="?", default=None,
-                        help="queue slug or directory; defaults to the current directory")
+                        help="queue slug or disc folder; defaults to the current directory")
     parser.add_argument("--dry-run", action="store_true",
                         help="show what would be copied, copy nothing")
     parser.add_argument("--force", action="store_true",

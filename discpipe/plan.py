@@ -25,7 +25,7 @@ KEEP = "keep"  # leave the file exactly as it is
 
 
 def resolve_target(value=None):
-    """Accept a queue slug, a path, or nothing at all.
+    """Accept a queue slug, a disc folder in the queue, or nothing at all.
 
     With no argument the current directory is the target, so you can cd into a
     rip and run the stages bare. Returns (name, media_dir, work_dir, slug).
@@ -40,12 +40,13 @@ def resolve_target(value=None):
     if not candidate.is_dir():
         notify.fail(f"no queue entry or directory named {value!r}")
 
-    try:
-        if candidate.resolve() == config.ROOT.resolve():
-            notify.fail(f"{candidate} is the queue root, not a rip -- "
-                        "name a disc, or cd into one")
-    except OSError:
-        pass
+    root = config.ROOT.resolve()
+    if candidate.resolve() == root:
+        notify.fail(f"{candidate} is the queue root, not a rip -- "
+                    "name a disc, or cd into one")
+    if candidate.resolve().parent != root:
+        notify.fail(f"{candidate} is not a disc folder in {config.ROOT}. "
+                    f"Name a disc, or move the folder into {config.ROOT}.")
 
     if not (candidate / "manifest.json").exists():
         if not adoptlib.is_adoptable(candidate):
