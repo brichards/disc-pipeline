@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Where every disc in the queue stands, and what it is waiting on.
+"""Show the stage, progress, and next command or hold reason of each disc.
 
-A log answers "what happened". This answers "what needs me now" -- which is a
-different question, and the one that matters when four discs are in flight and
-two of the stages are gates. Reads state from disk; starts nothing.
+A log shows what happened. disc-status shows what needs you now. It also shows
+the space available in the queue root, as Finder counts it. It changes nothing
+and starts nothing.
 """
 
 import argparse
@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from discpipe import config, disc, manifest, notify, plan as planlib
 
-# What to do next, per state.
 NEXT = {
     manifest.QUEUED: ("waiting to rip", "disc-rip"),
     manifest.RIPPED: ("ready to identify", "disc-identify {t}"),
@@ -79,9 +78,6 @@ def _queue_row(path):
     if state == manifest.HELD:
         detail = data.get("held_reason", "held")
         retryable = data.get("held_retryable")
-        # A hold recorded before the rip finished can always be retried by
-        # running the stage again -- it re-scans and re-checks from scratch.
-        # Holds recorded later need a decision, so they are flagged for you.
         if retryable or not (path / "plan.json").exists():
             detail += "  [re-run to retry]"
             command = "disc-rip"
@@ -91,8 +87,6 @@ def _queue_row(path):
     else:
         detail = _progress(path, data, state) or detail
 
-    # A rip MakeMKV worked around still reports done. Saying so here is the
-    # difference between noticing and finding out mid-rewatch.
     if planlib.path_for(path).exists():
         try:
             if planlib.load(path).get("auto_applied"):
@@ -118,7 +112,6 @@ def _queue_row(path):
 
 
 def _progress(path, data, state):
-    """A count that means something for the stage the disc is sitting in."""
     if state in (manifest.QUEUED, manifest.RIPPED):
         titles = data.get("titles", [])
         done = sum(1 for t in titles
