@@ -64,7 +64,7 @@ def main():
             notify.say(f"\n{name}: not eligible for automatic naming.")
             for blocker in blockers[:8]:
                 notify.say(f"  {blocker}")
-            notify.say("Review it: disc-apply " + (slug or str(work_dir.parent)))
+            notify.say(f"Review it: disc-apply {slug}")
             manifest.hold(manifest.load(slug),
                           f"needs review: {len(blockers)} item(s) not eligible "
                           "for automatic naming", stage="apply")
