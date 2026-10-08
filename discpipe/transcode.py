@@ -97,10 +97,6 @@ def output_for(source, out_dir):
     return Path(out_dir) / (Path(source).stem + ".mkv")
 
 
-def build_command(source, script, extra_args=()):
-    return [script, str(source), *COMMON_ARGS, *extra_args]
-
-
 def run(source, out_dir, script, staging, extra_args=(), on_line=None):
     """Transcode one file into out_dir. Returns (exit_code, output_path)."""
     out_dir = Path(out_dir)
@@ -109,7 +105,7 @@ def run(source, out_dir, script, staging, extra_args=(), on_line=None):
     staged = _staged(source, staging)
 
     code = proc.stream(
-        build_command(Path(source).resolve(), script, extra_args),
+        [script, str(Path(source).resolve()), *COMMON_ARGS, *extra_args],
         on_line,
         cwd=staged.parent,
     )

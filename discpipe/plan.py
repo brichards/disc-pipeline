@@ -28,7 +28,7 @@ def resolve_target(value=None):
     """Accept a queue slug, a disc folder in the queue, or nothing at all.
 
     With no argument the current directory is the target, so you can cd into a
-    rip and run the stages bare. Returns (name, media_dir, work_dir, slug).
+    rip and run the stages bare. Returns the disc folder.
 
     Every target ends up in one shape: a manifest, the media in raw/, and
     everything else beside it. A folder of loose .mkv files gets there by being
@@ -53,7 +53,7 @@ def resolve_target(value=None):
             notify.fail(f"{candidate} has no manifest and no .mkv files")
         adoptlib.adopt(candidate)
 
-    return candidate.name, candidate / "raw", candidate, candidate.name
+    return candidate
 
 
 def path_for(work_dir):

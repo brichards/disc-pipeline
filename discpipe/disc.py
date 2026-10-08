@@ -141,11 +141,6 @@ def available_bytes(path):
         return shutil.disk_usage(path).free
 
 
-def estimated_bytes(titles):
-    """MakeMKV's own size estimates for the titles we intend to rip."""
-    return sum(t.size_bytes for t in titles)
-
-
 EJECT_ATTEMPTS = 6
 EJECT_PAUSE = 5  # seconds
 

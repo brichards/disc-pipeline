@@ -6,7 +6,6 @@ in front of the agent that it can decide without opening anything itself.
 """
 
 import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -139,7 +138,3 @@ def contact_sheets(path, seconds, out_dir):
         made["scan"] = scan_out.name
 
     return made
-
-
-def have_tools():
-    return all(shutil.which(t) for t in ("ffprobe", "ffmpeg"))

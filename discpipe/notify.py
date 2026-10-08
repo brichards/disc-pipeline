@@ -6,7 +6,6 @@ thing succeeded is how notifications get ignored. Use disc-status for those.
 """
 
 import os
-import shlex
 import subprocess
 import sys
 
@@ -78,7 +77,3 @@ def human_duration(seconds):
     hours, rest = divmod(int(seconds), 3600)
     minutes, secs = divmod(rest, 60)
     return f"{hours}:{minutes:02d}:{secs:02d}"
-
-
-def quote(args):
-    return " ".join(shlex.quote(str(a)) for a in args)
