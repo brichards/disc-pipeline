@@ -35,8 +35,6 @@ def test_a_folder_that_is_not_a_disc_folder_is_refused(root, tmp_path, where):
 def test_a_loose_folder_in_the_queue_is_adopted(root):
     folder = loose_folder(root)
 
-    name, media_dir, work_dir, slug = planlib.resolve_target(str(folder))
-
-    assert (work_dir, slug) == (folder, "My Movie")
-    assert (media_dir / "title_t00.mkv").exists()
+    assert planlib.resolve_target(str(folder)) == folder
+    assert (folder / "raw" / "title_t00.mkv").exists()
     assert (folder / "manifest.json").exists()

@@ -34,7 +34,9 @@ def main():
                         help="hide transcoder progress output")
     args = parser.parse_args()
 
-    name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
+    work_dir = planlib.resolve_target(args.target)
+    name = slug = work_dir.name
+    media_dir = work_dir / "raw"
     plan = planlib.load(work_dir)
 
     keepers = _keepers(plan, media_dir)

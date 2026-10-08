@@ -35,7 +35,9 @@ def main():
     if not (args.frames_only or args.from_log) and not agent.available():
         notify.fail("the claude CLI is not on PATH")
 
-    name, media_dir, work_dir, slug = planlib.resolve_target(args.target)
+    work_dir = planlib.resolve_target(args.target)
+    name = slug = work_dir.name
+    media_dir = work_dir / "raw"
 
     # An agent run costs minutes and real money, so a change to how the plan is
     # parsed or presented should not require paying for the answer twice.
