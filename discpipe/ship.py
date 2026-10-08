@@ -1,8 +1,7 @@
-"""Getting finished media onto the NAS, and proving it arrived.
+"""Copy finished media to the NAS, and verify the copy.
 
-Two things this module exists to prevent. Writing tens of gigabytes into an
-empty directory on the boot volume because the share silently unmounted, and
-declaring success on a copy nobody checked.
+disc-ship copies and verifies. disc-cleanup verifies the copy again before it
+offers a delete.
 """
 
 import os
@@ -11,22 +10,18 @@ from pathlib import Path
 
 from . import proc
 
-# Preserve times but not permissions or ownership: SMB cannot honour them, and
-# asking makes rsync noisy about failures that do not matter.
+# SMB cannot keep permissions or ownership. If rsync tries, it reports errors
+# that do not matter.
 #
-# --partial-dir rather than --partial. Both resume an interrupted transfer, but
-# plain --partial leaves the half-written file under its real name, which in a
-# Plex library is a movie that looks complete and plays truncated. Sending
-# partials to a hidden sibling directory means the final name only ever appears
-# on a finished file. rsync excludes the partial directory from the transfer
-# automatically.
+# --partial leaves a partial file under its real name. In a Plex library, that
+# file looks like a complete movie and stops early. --partial-dir keeps the
+# partial file in a hidden folder, and rsync excludes that folder from the
+# transfer.
 PARTIAL_DIR = ".disc-pipeline-partial"
 #
-# --size-only, because this share does not accept modification times at all:
-# files land carrying the time of the transfer, hours off the source. Left to
-# compare on size-and-time, rsync would resend every byte on every re-run.
-# Content is proved separately by the checksum pass below, so skipping on size
-# is safe here in a way it would not be on its own.
+# This share does not accept modification times. Each file gets the time of
+# the transfer. If rsync compares size and time, it sends each file again on
+# each new run.
 TRANSFER_ARGS = ["--recursive", "--times", "--size-only",
                  f"--partial-dir={PARTIAL_DIR}", "--human-readable"]
 VERIFY_ARGS = ["--recursive", "--times", "--checksum", "--dry-run",
@@ -38,7 +33,6 @@ class NotMounted(RuntimeError):
 
 
 def volume_root(path):
-    """The mount point a path lives under, or None if it is on no volume."""
     path = Path(path)
     candidate = path if path.exists() else path.parent
     while True:
@@ -50,11 +44,9 @@ def volume_root(path):
 
 
 def ensure_mounted(destination):
-    """Refuse to write unless the destination really is on a mounted volume.
+    """When a share is not mounted, its path has nothing, or a folder on the boot disk.
 
-    An unmounted share leaves either nothing at the path or a bare directory on
-    the boot disk. Both look writable; neither is the NAS. os.path.ismount is
-    the difference between the two.
+    Both look writable, but neither is the NAS. os.path.ismount tells them apart.
     """
     destination = Path(destination)
     root = volume_root(destination)
@@ -68,11 +60,6 @@ def ensure_mounted(destination):
 
 
 def plan_transfer(source, destination):
-    """Every file that will be written, as (source, destination) pairs.
-
-    Computed rather than delegated to rsync so collisions can be reported
-    before anything is copied.
-    """
     source, destination = Path(source), Path(destination)
     if source.is_file():
         return [(source, destination)]
@@ -84,11 +71,7 @@ def plan_transfer(source, destination):
 
 
 def promote(bare_file, folder):
-    """Move a bare movie file into a folder of the same name.
-
-    Plex needs the movie folder before extras can attach to it, so a title that
-    shipped without extras has to be promoted when extras turn up later.
-    """
+    """Plex attaches extras only to a movie in a movie folder."""
     bare_file, folder = Path(bare_file), Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / bare_file.name
@@ -99,7 +82,6 @@ def promote(bare_file, folder):
 
 
 def transfer(source, destination, on_line=None):
-    """rsync source to destination. Returns the exit code."""
     source, destination = Path(source), Path(destination)
     if source.is_dir():
         args = [f"{source}/", f"{destination}/"]
@@ -114,11 +96,9 @@ def transfer(source, destination, on_line=None):
 
 
 def verify(source, destination):
-    """A content-level check that everything arrived.
+    """rsync with --checksum and --dry-run lists the files that it must still send.
 
-    rsync in checksum dry-run mode lists what it would still need to send.
-    Empty output means every byte is already there -- a real comparison, not a
-    size-and-timestamp guess, and without hand-rolling checksums over SMB.
+    No output means that each byte is already on the NAS.
     """
     source, destination = Path(source), Path(destination)
     args = ([f"{source}/", f"{destination}/"] if source.is_dir()
@@ -138,14 +118,12 @@ def verify(source, destination):
 
 
 def _is_mismatch(line):
-    """Whether an --itemize-changes line means the content actually differs.
+    """The flags of an --itemize-changes line are YXcstpoguax.
 
-    The flags are YXcstpoguax. A leading '.' means rsync would send no data --
-    the file is already there, byte for byte. What follows can still show a 't',
-    because SMB does not preserve modification times exactly, and that is not a
-    difference worth refusing to clean up over.
-
-    Only a transfer marker, or a checksum or size flag, means the copy is wrong.
+    A first character of '.' means that rsync sends no data: the file is already
+    there. A 't' can follow, because SMB does not keep modification times
+    exactly. Only a transfer marker, a checksum flag or a size flag means that
+    the copy is different.
     """
     line = line.rstrip()
     if not line or line.startswith(("sending", "sent ", "total ")):
