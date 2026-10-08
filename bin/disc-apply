@@ -18,6 +18,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -282,13 +283,9 @@ def _show(item, index, total):
     notify.say(f"[{index}/{total}] {item['file']}")
     notify.say(f"   {MARK.get(action, ' ')} {proposed}   [{action}, "
                f"{item.get('confidence', '?')}]")
-    for line in _wrap(item.get("evidence", ""), 92):
+    for line in textwrap.wrap(item.get("evidence", ""), 92) or [""]:
         notify.say(f"     {line}")
 
-
-def _wrap(text, width):
-    import textwrap
-    return textwrap.wrap(text, width) or [""]
 
 
 def _edit(item):

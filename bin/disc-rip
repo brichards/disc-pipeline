@@ -175,7 +175,7 @@ def _run(args, discs):
         notify.say("\nEverything on this disc is already ripped.")
         return _finish(data, 0, 0, len(have), mount, args)
 
-    needed = disc.estimated_bytes(todo) + config.SPACE_HEADROOM_BYTES
+    needed = sum(t.size_bytes for t in todo) + config.SPACE_HEADROOM_BYTES
     available = disc.available_bytes(config.ROOT)
     notify.say(
         f"Need {notify.human_bytes(needed)}, "

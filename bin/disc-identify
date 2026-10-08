@@ -8,6 +8,7 @@ disposes. Runs against a queue slug or a disc folder in the queue.
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -30,7 +31,7 @@ def main():
                         help="re-derive plan.json from the last saved agent run")
     args = parser.parse_args()
 
-    if not probe.have_tools():
+    if not all(shutil.which(tool) for tool in ("ffprobe", "ffmpeg")):
         notify.fail("ffmpeg and ffprobe are required")
     if not (args.frames_only or args.from_log) and not agent.available():
         notify.fail("the claude CLI is not on PATH")
