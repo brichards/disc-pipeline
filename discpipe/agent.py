@@ -1,11 +1,7 @@
-"""Running Claude Code headless to name ripped titles.
+"""Run Claude Code in headless mode to get a naming plan for the ripped titles.
 
-The naming problem is not scriptable. Every disc worked by hand so far needed
-a judgement call that metadata could not supply: which of three feature-length
-titles is the film, whether eight mid-length titles are featurettes or slices
-of the movie, which of two identical-looking sets is the truncated one. So the
-stage shells out to an agent, hands it contact sheets and an inventory, and
-takes back a proposal -- never a rename.
+disc-identify gives the agent an inventory and contact sheets of the titles.
+The agent returns a plan, and renames nothing.
 """
 
 import dataclasses
@@ -23,8 +19,8 @@ class Failure:
     retryable: bool = False
 
 
-# The claude CLI reports the HTTP status in its envelope when a request reached
-# the API, and names the transport in the message when it never got that far.
+# The claude CLI gives the HTTP status in its envelope when a request got to the
+# API. When a request did not get to the API, the message names the transport.
 RETRYABLE_STATUSES = frozenset({401, 408, 429, 500, 502, 503, 504})
 _UNREACHABLE = re.compile(
     r"unable to connect|connection (refused|reset|error)"
@@ -32,9 +28,8 @@ _UNREACHABLE = re.compile(
     re.IGNORECASE,
 )
 
-# Without an allowlist a headless run blocks on a permission prompt that nobody
-# is there to answer, and the stage hangs instead of failing. Web access is not
-# optional: the agent cannot name extras without looking up what the disc ships.
+# With no allowlist, a headless run stops at a permission prompt that nobody
+# answers. The stage then waits with no end and does not fail.
 ALLOWED_TOOLS = [
     "Skill",
     "Read",
@@ -141,7 +136,6 @@ Return the plan as structured output."""
 
 
 def run(prompt, cwd, extra_dirs=(), timeout=DEFAULT_TIMEOUT, model=None):
-    """Invoke the agent. Returns (plan_dict, raw_stdout, Failure_or_None)."""
     command = [
         "claude", "-p", prompt,
         "--output-format", "json",
@@ -180,11 +174,8 @@ def run(prompt, cwd, extra_dirs=(), timeout=DEFAULT_TIMEOUT, model=None):
 
 
 def _extract_plan(stdout):
-    """Unwrap the CLI envelope and get at the structured result.
-
-    With --json-schema the validated object arrives in `structured_output`;
-    `result` stays the agent's prose summary. Reading `result` gets you a
-    sentence about the plan rather than the plan.
+    """With --json-schema, the claude CLI puts the validated object in
+    `structured_output`. `result` holds only a prose summary of the plan.
     """
     try:
         envelope = json.loads(stdout)
@@ -213,7 +204,7 @@ def _extract_plan(stdout):
 
 
 def _error_in(envelope):
-    """The CLI describes a failed run on stdout, whatever it exits with."""
+    """The claude CLI describes a failed run on stdout, whatever its exit code."""
     if not isinstance(envelope, dict) or not envelope.get("is_error"):
         return None
     message = str(envelope.get("result", "agent reported an error"))[:500]
