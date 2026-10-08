@@ -1,4 +1,9 @@
-"""Starting a drainer session from outside one."""
+"""Start a drainer session from outside a session.
+
+A stage that moves a disc forward calls start(), so the next stage starts with
+no wait for a person. start() does nothing when a session is open, or when
+disc-run started the stage.
+"""
 
 import os
 import subprocess
@@ -12,7 +17,6 @@ UNDER_DRAINER = "DISC_PIPELINE_DRAINER"
 
 
 def start():
-    """Start disc-run --watch, detached, unless one is already carrying discs on."""
     if os.environ.get(UNDER_DRAINER) or not locks.is_free(locks.SESSION):
         return
     config.ensure_root()
