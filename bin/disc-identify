@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Stage 02 -- work out what each ripped file actually is.
+"""Propose a name for each ripped title, and write plan.json.
 
-Probes every file, builds contact sheets, and hands the lot to a headless
-agent. Writes plan.json and nothing else: identification proposes, disc-apply
-disposes. Runs against a queue slug or a disc folder in the queue.
+disc-identify makes an ffprobe inventory and two contact sheets for each title.
+A headless agent gets them, looks up the release of the disc, and proposes an
+action, a name and a confidence for each title. disc-apply applies the plan.
+
+If the agent is not available, the disc is held as retryable. If the plan
+cannot be used, the disc is held for review.
 """
 
 import argparse
@@ -40,8 +43,6 @@ def main():
     name = slug = work_dir.name
     media_dir = work_dir / "raw"
 
-    # An agent run costs minutes and real money, so a change to how the plan is
-    # parsed or presented should not require paying for the answer twice.
     if args.from_log:
         return _replan(name, media_dir, work_dir, slug)
     files = sorted(p for p in media_dir.glob("*.mkv") if p.is_file())
