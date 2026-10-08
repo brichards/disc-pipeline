@@ -1,8 +1,7 @@
-"""Desktop notifications and console output.
+"""Show messages on the console, and post macOS notifications.
 
-Failures notify, because they stop the pipeline and you may not look for a day.
-Gates do not -- the disc is not going anywhere, and interrupting you to say a
-thing succeeded is how notifications get ignored. Use disc-status for those.
+Only a failure, a hold or a rip with warnings posts a notification. disc-status
+shows the discs that wait at a gate.
 """
 
 import os
@@ -11,7 +10,6 @@ import sys
 
 
 def alert(title, message):
-    """A macOS notification. Failures only."""
     script = "display notification {} with title {}".format(
         _applescript_string(message), _applescript_string(title)
     )
@@ -23,7 +21,7 @@ def alert(title, message):
             timeout=10,
         )
     except (OSError, subprocess.TimeoutExpired):
-        pass  # never let a notification failure take down a stage
+        pass
     say(f"! {title}: {message}")
 
 
@@ -31,8 +29,6 @@ def _applescript_string(text):
     return '"' + str(text).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-# Set by disc-watch so several discs can share one tailable log without their
-# output becoming impossible to attribute.
 LOG_PREFIX = os.environ.get("DISC_LOG_PREFIX", "")
 
 
@@ -65,7 +61,7 @@ def fail(message, code=1):
 
 
 def human_bytes(n):
-    """Decimal units, as Finder counts them."""
+    """Finder counts in decimal units: 1 GB is 1000**3 bytes."""
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if abs(n) < 1000 or unit == "TB":
             return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
