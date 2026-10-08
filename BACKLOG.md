@@ -273,6 +273,14 @@ number is smaller when macOS can purge files. Each command now calls
 `disc.available_bytes`. A test fails if a different command or module reads
 the space itself.
 
+## DP-30 — A disc held for space is scanned again at each retry — `done`
+
+The drainer retries a disc held for space every 10 minutes. Each retry did a
+full MakeMKV scan of the disc, and then held the disc for the same reason. A
+retry now uses the titles that the first scan wrote to the manifest. A
+different disc gets its own scan. `--redo`, `--playlist` and `--dry-run`
+always scan, because each one changes what `disc-rip` does.
+
 ## DP-06 — Simplify the three largest commands — `todo`
 
 `disc-rip` (406), `disc-apply` (402), `disc-cleanup` (372) of 4,298 total.

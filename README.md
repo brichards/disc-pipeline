@@ -241,6 +241,7 @@ Notes:
 - Running `disc-rip` again retries only the failed titles; `--redo` re-rips every title.
 - A rip with read errors stays in the drive until `disc-verify` has checked it.
 - Given a slug, it rips only that disc, and only if it is in the drive. `disc-run` uses this to retry a disc held for space or left mid-rip.
+- A retry of a disc held for space uses the titles from the first scan and does not scan the disc again. `--redo`, `--playlist` and `--dry-run` always scan.
 
 #### Decoy discs
 
