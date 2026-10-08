@@ -114,13 +114,6 @@ class Title:
                 return 0
         return 0
 
-    def stream_signature(self):
-        """Identifies titles carrying the same tracks. Decoy playlists on an
-        obfuscated disc are usually indistinguishable by this."""
-        return "|".join(
-            f"{s.kind}/{s.codec}/{s.lang}/{s.channels}" for s in self.streams
-        )
-
 
 @dataclass
 class DiscInfo:

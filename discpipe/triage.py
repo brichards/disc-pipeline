@@ -77,10 +77,6 @@ def decoy_cluster(titles):
     return cluster
 
 
-def is_obfuscated(titles):
-    return len(decoy_cluster(titles)) > config.DECOY_CLUSTER_THRESHOLD
-
-
 def segment_order_consistency(titles):
     """How strongly the cluster agrees on one relative segment order, 0..1.
 
@@ -111,10 +107,6 @@ def segment_order_consistency(titles):
                 votes[(a, b)] = order
     total = agree + disagree
     return 1.0 if total == 0 else agree / total
-
-
-def segment_order_is_consistent(titles, threshold=0.98):
-    return segment_order_consistency(titles) >= threshold
 
 
 def select_feature(titles, expected_seconds=None):
