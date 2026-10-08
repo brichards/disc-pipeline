@@ -1,29 +1,18 @@
-"""Turning a folder of loose files into a queue entry.
+"""Make a folder of .mkv files into a disc folder of the queue.
 
-The pipeline has one shape: a directory with a manifest, the media in raw/, and
-everything else written beside it in the open. A folder ripped by hand -- or by
-MakeMKV directly -- becomes that shape by gaining a manifest and having its
-files moved down a level, which on one filesystem is a rename.
-
-Adoption only ever happens when you point a command at a folder. The drainer
-does not adopt: it advances what already has a manifest, so a directory you are
-still copying into sits untouched until you act on it.
+The folder gets a manifest, and its .mkv files move into raw/. A stage adopts a
+folder only when you point the stage at that folder. The drainer does not adopt.
 """
 
 from pathlib import Path
 
 from . import manifest, notify
 
-# A folder ripped by hand has no disc behind it, so there is nothing to
-# fingerprint. The ledger only uses fingerprints to answer "have I ripped this
-# disc before", which does not apply here -- so record nothing rather than
-# inventing an identifier that claims to mean something.
 FINGERPRINT = None
 DISC_TYPE = "adopted"
 
 
 def is_adoptable(path):
-    """A directory holding .mkv files and no manifest."""
     path = Path(path)
     if (path / "manifest.json").exists():
         return False
@@ -31,12 +20,6 @@ def is_adoptable(path):
 
 
 def adopt(path):
-    """Give a folder a manifest and move its media into raw/.
-
-    The directory keeps its own name. Fingerprint-derived slugs exist because
-    disc-rip needs a collision-proof name before it knows what the disc is; a
-    folder you named yourself already has one.
-    """
     path = Path(path)
     slug = path.name
     raw = path / "raw"
@@ -66,7 +49,6 @@ def adopt(path):
         one.rename(target)
         moved += 1
 
-    # Ripped, not queued: queued would send the drainer looking for a disc.
     data["state"] = manifest.RIPPED
     manifest.save(data)
 
