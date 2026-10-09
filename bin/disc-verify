@@ -200,7 +200,9 @@ def _eject_if_still_ours(data):
                 continue
         except (OSError, ValueError):
             continue
-        notify.ejected(mount, disc.eject(mount))
+        outcome = disc.eject(mount)
+        notify.ejected(mount, outcome)
+        manifest.record_eject(data, outcome[0])
         return
 
 
