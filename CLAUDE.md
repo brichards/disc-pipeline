@@ -1,6 +1,7 @@
 # disc-pipeline
 
-`BACKLOG.md` holds the ordered plan. Reference item IDs (`DP-04`) in commits.
+`BACKLOG.md` holds the open items, in the order to work them. An item has no ID.
+The pull request that completes an item deletes it from `BACKLOG.md`.
 
 ## Documentation
 
@@ -27,6 +28,9 @@ was considered and rejected — these go in the commit message.
 
 No comment restates the code or a name.
 
+Comments and tests stay evergreen. Neither one justifies a choice or tells a
+history.
+
 ## Tests
 
 pytest, a development dependency. The runtime stays standard library only, so
@@ -52,6 +56,8 @@ Two meanings, one name each:
 - `--redo` repeats work already marked done.
 - `--force` overrides a refusal.
 
+A renamed flag gets no alias, because the project has no outside users yet.
+
 ## This checkout runs the pipeline
 
 `PATH` and the `disc-watch` LaunchAgent run `bin/` from this directory, and
@@ -69,6 +75,7 @@ here reaches a running pipeline.
 - One thought per commit, one branch per change.
 - Merge with `--no-ff`, then delete the branch.
 - Non-verbose subject lines. Body carries the reasoning.
+- A commit subject has no item ID.
 
 ## Verifying a change
 
