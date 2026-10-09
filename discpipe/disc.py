@@ -128,7 +128,7 @@ EJECT_ATTEMPTS = 6
 EJECT_PAUSE = 5
 
 
-def eject(mount):
+def eject(mount, attempts=EJECT_ATTEMPTS):
     """diskutil does not eject a disc while a process has it open.
 
     After a rip, a process often has the disc open for a short time. drutil can
@@ -136,7 +136,7 @@ def eject(mount):
     also when it ejects nothing, so only drutil status shows the result.
     """
     refusal = ""
-    for attempt in range(EJECT_ATTEMPTS):
+    for attempt in range(attempts):
         if not Path(mount).exists():
             break
         if attempt:
