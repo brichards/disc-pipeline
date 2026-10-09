@@ -306,10 +306,13 @@ def _merge_titles(previous, candidates):
     return records
 
 
-def _eject(mount, args):
+def _eject(mount, args, data=None):
     if args.no_eject or args.dry_run:
         return
-    notify.ejected(mount, disc.eject(mount))
+    outcome = disc.eject(mount)
+    notify.ejected(mount, outcome)
+    if data is not None:
+        manifest.record_eject(data, outcome[0])
 
 
 def _park(data, reason, mount, args, retryable=False, stage=None):
@@ -317,7 +320,7 @@ def _park(data, reason, mount, args, retryable=False, stage=None):
     if retryable:
         notify.say("Disc left in the drive -- clear the problem and re-run.")
     else:
-        _eject(mount, args)
+        _eject(mount, args, data)
 
 
 def _held_for_space(data):
@@ -377,7 +380,7 @@ def _finish(data, done, failed, skipped, mount, args):
     manifest.advance(data, manifest.RIPPED)
     drainer.start()
     notify.say(f"Ripped to {manifest.disc_dir(data['slug']) / 'raw'}")
-    _eject(mount, args)
+    _eject(mount, args, data)
     return 0
 
 

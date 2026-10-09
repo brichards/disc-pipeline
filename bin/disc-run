@@ -112,6 +112,7 @@ def _pass(running, failed, tried, args):
     started = waiting = 0
 
     if locks.DRIVE not in busy:
+        _retry_eject(args)
         slug = _unqueued_disc()
         if slug and _launch(running, slug, "disc-rip", locks.DRIVE, [slug], args):
             busy.add(locks.DRIVE)
@@ -192,6 +193,24 @@ def _reap(running, failed):
             data = manifest.find(slug)
             if data:
                 failed[slug] = (stage, data.get("state"))
+
+
+def _retry_eject(args):
+    for mount, kind in disc.find_discs():
+        try:
+            slug = disc.slugify(mount.name, disc.fingerprint(mount, kind))
+        except (OSError, ValueError):
+            continue
+        data = manifest.find(slug)
+        if not data or not data.get("eject_pending"):
+            continue
+        if args.dry_run:
+            notify.say(f"  would eject  {mount.name}")
+            continue
+        outcome = disc.eject(mount, attempts=1)
+        if outcome[0]:
+            notify.ejected(mount, outcome)
+            manifest.record_eject(data, True)
 
 
 def _unqueued_disc():

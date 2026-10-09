@@ -103,6 +103,14 @@ def advance(data, state):
     return data
 
 
+def record_eject(data, ejected):
+    if ejected and data.pop("eject_pending", False):
+        save(data)
+    elif not ejected and not data.get("eject_pending"):
+        data["eject_pending"] = True
+        save(data)
+
+
 def advance_slug(slug, state):
     return advance(load(slug), state)
 

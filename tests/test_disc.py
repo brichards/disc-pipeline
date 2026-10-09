@@ -151,6 +151,14 @@ def test_drutil_exiting_0_is_not_an_eject(drive, tmp_path):
     assert fake.loaded is True
 
 
+def test_one_attempt_makes_one_diskutil_call(drive, tmp_path):
+    """The drainer tries once on each pass, so a locked screen does not delay it."""
+    fake = drive(held_for=99)
+
+    assert disc.eject(tmp_path, attempts=1)[0] is False
+    assert fake.calls.count("diskutil eject") == 1
+
+
 def test_a_disc_already_unmounted_is_ejected_by_drutil(drive, tmp_path):
     fake = drive(drutil_ejects=True)
 

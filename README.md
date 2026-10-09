@@ -212,6 +212,7 @@ Notes:
 - `disc-watch` starts a session when a disc goes in, and so does any stage run by hand that moves a disc forward.
 - A stage that fails is not started again for that disc until the disc's state changes. Restart the session to retry it sooner.
 - A disc held for something that can clear on its own -- disk space, the NAS, the agent -- is retried every 10 minutes. The session stays open, keeping the Mac awake, while one is waiting.
+- A disc that a stage could not eject, for example while the screen is locked, is ejected on a later pass. Each pass tries the eject one time.
 
 ### disc-rip
 

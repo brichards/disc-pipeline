@@ -3,18 +3,6 @@
 Open items, in the order to work them. An item has no ID. The pull request that
 completes an item deletes it from this file.
 
-## Eject a ripped disc after the screen unlocks
-
-While the screen is locked, loginwindow refuses each eject: "Unmount was
-dissented by PID 168 (loginwindow)". A test on 2026-10-08 confirmed this, and
-the same eject worked after the unlock. `disc-rip` tries for about 30 seconds,
-so a disc ripped while the screen is locked stays in the drive.
-
-On each pass, the drainer ejects a disc that is in the drive, is in the
-ledger, and that no stage uses. The disc then comes out on the first pass
-after the unlock, while a session is open. A rip with read errors stays in the
-drive until `disc-verify` checks it.
-
 ## Write the README in STE
 
 You tuned the README by hand in `756bb9e`, on 2026-09-19. After that, 12
